@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>DQA</title>
+</head>
+
+<body>
+    
+    {% if not session.get('data') %}
+    <!-- 用户认证 -->
+    <div align="center">
+    <form method="post" action="{{url_for('auth')}}">
+        <img src="{{url_for('static', filename='logo.png')}}" text="logo" height="18" width="32">&nbsp;    
+        <label>账号：</label><input type="text" name="user" size="12" /> &nbsp;
+        <label>密码：</label><input type="password" name="pwd" size="12" /> &nbsp;
+        <input type="submit" name="submit" value="登录" /> &nbsp;
+        <input type="submit" name="submit" value="注册" /> &nbsp;
+    {% if auth_msg %} <span style="color:red;">{{auth_msg}}</span> {% endif %} 
+    </form>
+    </div>
+    {% else %}
+    <div>
+    <!-- 成功登录 -->
+    <div align="center">
+    <form method="post" action="{{url_for('auth')}}">
+        <img src="{{url_for('static', filename='logo.png')}}" text="logo" height="18" width="32">&nbsp;    
+        <label>账号：</label>{{session['data']['user']}} &nbsp;
+        <input type="submit" name="submit" value="登出" /> &nbsp; 
+    </form>   
+    <hr style="width:600px;" />
+    </div>
+    <!-- 提示用语 -->
+    <div align="center">
+    <form id="prompt" method="post" action="{{url_for('prompt')}}" style="background:#f3f3f3; width:600px;" onSubmit= "javascript:prompt_idx.disabled=false;prompt_txt.disabled=false"><br/>
+        <label>选择角色：</label>
+        <script>
+        function select() {
+            var prompt_idx = document.getElementById("prompt_idx").selectedIndex;
+            prompts = {{prompts|tojson}}
+            prompt = prompts[prompt_idx]['prompt'] ;
+            document.getElementById("prompt_txt").value=prompt;
+        }
+        </script>
+        <select name="prompt_idx" id="prompt_idx" onchange="select()" {% if messages|length > 0 %}disabled{% endif %} >
+             {% for p in prompts %}
+             <option value="{{loop.index0}}" 
+                {% if loop.index0 == prompt['index'] %}selected{% endif %}
+                                            >{{p['act']}}</option>
+             {% endfor %}
+        </select> </span><br/><br/>
+        <label style="vertical-align:top">提示：</label>
+        <textarea cols="60" rows="6" name="prompt_txt" id="prompt_txt" style="background:#d0e8ff" {% if messages|length > 0 %}disabled{% endif %} >{{prompt['content']|trim}}</textarea><br/><br/>
+        {% if messages|length == 0 %}
+        <input type="submit" name="submit" value="提交" /> <br/><br/>
+        {% endif %}
+        {% if messages|length > 0 %}
+        <input type="submit" name="submit" value="重来" /> <br/><br/>        
+        {% endif %}
+    </form>
+    </div><br />
+    <!-- 交互问答 -->
+    {% if messages|length > 0 %}
+    {% for message in messages %}
+        {% if loop.index0 > 0 %}
+            <!--发问-->
+            {% if loop.index0 % 2 == 1 %} 
+            <div align="center">
+            <form method="post" action="{{url_for('chat')}}" style="background:#f3f3f3; width:600px;"><br/>
+                <input type="hidden" name="message_idx" value="{{loop.index0}}" />
+                <label style="vertical-align:top">发问{{loop.index0/2}}：</label><textarea cols="60" rows="6" name="chat_ask" style="background:#d0e8ff" >{{message['content']}}</textarea><br/><br/>
+            {% endif %}
+            <!--回答-->
+            {% if loop.index0 % 2 == 0 %}
+                <label style="vertical-align:top">回答{{(loop.index0-1)/2}}：</label><textarea cols="60" rows="6" name="chat_answer" style="background:#d0e8ff" >{{message['content']}}</textarea><br/><br/>
+                <input type="submit" name="submit" value="删除" /><br/><br/>
+            </form>
+            </div><br/>
+            {% endif %} 
+        {% endif %}
+    {% endfor %}
+    <!--下一个发文-->
+    <div align="center">
+    <form method="post" action="{{url_for('chat')}}" style="background:#f3f3f3; width:600px;"><br/>
+    <label style="vertical-align:top">发问：</label><textarea cols="60" rows="6" name="chat_ask" style="background:#d0e8ff" ></textarea><br/><br/>
+    <input type="submit" name="submit" value="发送" /> <br/><br/>
+    </form>
+    </div>
+    {% endif %}
+    </div>
+    {% endif %}
+</body>
+</html>

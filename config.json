@@ -1,0 +1,7 @@
+{
+"PORT":5000,
+"OPENAI_API_KEY":"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",
+"OPENAI_MODEL":"gpt-3.5-turbo",
+"HTTP_PROXY":"socks5://127.0.0.1:7890",
+"HTTPS_PROXY":"socks5://127.0.0.1:7890"
+}

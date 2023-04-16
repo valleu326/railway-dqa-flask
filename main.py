@@ -11,22 +11,38 @@ logging.basicConfig(filename='./logging.txt',
                     level=logging.DEBUG # 只打印level及level以上的消息
                     )
 
-# 在本地部署：读取配置文件中的变量
-with open("./config.json", encoding='utf-8') as f:
-    config = json.load(f)  # 读取配置文件
+# 获取全局变量
+if os.getenv("DEPLOY_ON_RAILWAY"):
+    # 在railway部署：从系统中获取环境变量
+    PORT = os.getenv("PORT")
+    OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+    openai.api_key = OPENAI_API_KEY
+    OPENAI_MODEL = os.getenv("OPENAI_MODEL")
+    MONGO_URL = os.getenv("MONGO_URL")
+    logging.debug(f'PORT = {PORT}')
+    logging.debug(f'OPENAI_API_KEY ={OPENAI_API_KEY}')
+    logging.debug(f'OPENAI_MODEL ={OPENAI_MODEL}')
+    logging.debug(f'MONGO_URL ={MONGO_URL}')
+else:
+    # 在本地部署：读取配置文件中的变量
+    with open("./config.json", encoding='utf-8') as f:
+        config = json.load(f)  # 读取配置文件
+    PORT = config["PORT"]
+    OPENAI_API_KEY = config["OPENAI_API_KEY"]
+    openai.api_key = OPENAI_API_KEY
+    OPENAI_MODEL = config["OPENAI_MODEL"]
+    HTTP_PROXY = config['HTTP_PROXY']
+    os.environ['HTTP_PROXY'] = HTTP_PROXY
+    HTTPS_PROXY = config['HTTPS_PROXY']
+    os.environ['HTTPS_PROXY'] = HTTPS_PROXY
+    MONGO_URL = config['MONGO_URL']
+    logging.debug(f'PORT = {PORT}')
+    logging.debug(f'OPENAI_API_KEY ={OPENAI_API_KEY}')
+    logging.debug(f'OPENAI_MODEL ={OPENAI_MODEL}')
+    logging.debug(f'HTTP_PROXY ={HTTP_PROXY}')
+    logging.debug(f'HTTPS_PROXY ={HTTPS_PROXY}')
+    logging.debug(f'MONGO_URL ={MONGO_URL}')
 
-# 获取环境变量
-PORT = os.getenv("PORT", default=config["PORT"])
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", default=config["OPENAI_API_KEY"])
-openai.api_key = OPENAI_API_KEY
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", default=config["OPENAI_MODEL"])
-MONGO_URL = os.getenv("MONGO_URL", default=config['MONGO_URL'])
-logging.debug(f"PORT={PORT}")
-logging.debug(f"OPENAI_API_KEY={OPENAI_API_KEY}")
-logging.debug(f"OPENAI_MODEL={OPENAI_MODEL}")
-logging.debug(f"MONGO_URL={MONGO_URL}")
-os.environ['HTTP_PROXY'] = config['HTTP_PROXY']
-os.environ['HTTPS_PROXY'] = config['HTTPS_PROXY']
 
 # 获取提示列表 
 with open("./prompts.json", encoding='utf-8') as f:

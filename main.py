@@ -21,15 +21,14 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", default=config["OPENAI_API_KEY"])
 openai.api_key = OPENAI_API_KEY
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", default=config["OPENAI_MODEL"])
 MONGO_URL = os.getenv("MONGO_URL", default=config['MONGO_URL'])
-if os.getenv("DEPLOY_ON_RAILWAY") is None:
-    os.environ['HTTP_PROXY'] = config['HTTP_PROXY']
-    os.environ['HTTPS_PROXY'] = config['HTTPS_PROXY']
-else:
-    print("DEPLOY_ON_RAILWAY is not None")
-print("API_KEY=", OPENAI_API_KEY)
-print("MONGO_URL=", MONGO_URL)
+logging.debug(f"PORT={PORT}")
+logging.debug(f"OPENAI_API_KEY={OPENAI_API_KEY}")
+logging.debug(f"OPENAI_MODEL={OPENAI_MODEL}")
+logging.debug(f"MONGO_URL={MONGO_URL}")
+os.environ['HTTP_PROXY'] = config['HTTP_PROXY']
+os.environ['HTTPS_PROXY'] = config['HTTPS_PROXY']
 
-# 获取提示列表
+# 获取提示列表 
 with open("./prompts.json", encoding='utf-8') as f:
     prompts = json.load(f)
 
@@ -136,6 +135,10 @@ def prompt():
         session['prompt'] = prompt_txt
         messages = [{"role": "system", "content": prompt_txt}]
         session['messages'] = messages
+        mongo_col.update_one({"name": session["name"]}, \
+                {"$set": {"prompt_idx":session["prompt_idx"], \
+                          "prompt":session["prompt"], \
+                          "messages":session["messages"]}}) 
         logging.debug("提交：prompt_idx={}, prompt={}, messages={}".format( \
             session['prompt_idx'], session['prompt'], session['messages']))
         return redirect(url_for('index'))
@@ -202,6 +205,8 @@ def chat():
         # 成功问答
         messages.append({"role":"assistant", "content":chat_answer})
         session['messages']=messages
+        mongo_col.update_one({"name": session["name"]}, \
+                {"$set": {"messages":session["messages"]}})
         logging.debug("回答: prompt_idx={}, prompt={}, messages={}".format( \
                         session['prompt_idx'], session['prompt'], session['messages']))
         return redirect(url_for('index'))
@@ -217,9 +222,13 @@ def chat():
         # 删除message_idx和message_idx之后的所有问答
         messages = messages[:message_idx]
         session['messages'] = messages
+        mongo_col.update_one({"name": session["name"]}, \
+                {"$set": {"messages":session["messages"]}})
         logging.debug( \
             "删除: prompt_idx={}, prompt={}, len(old_messages)={}, len(new_messages)={}".format( \
             session['prompt_idx'], session['prompt'], old_len, len(session['messages'])))
+        return redirect(url_for('index'))
+    else:
         return redirect(url_for('index'))
  
 if __name__ == '__main__':

@@ -11,16 +11,23 @@ logging.basicConfig(filename='./logging.txt',
                     level=logging.DEBUG # 只打印level及level以上的消息
                     )
 
-# 在railway部署：从系统中获取环境变量
-PORT = os.getenv("PORT", default=5000)
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", default=None)
+# 在本地部署：读取配置文件中的变量
+with open("./config.json", encoding='utf-8') as f:
+    config = json.load(f)  # 读取配置文件
+
+# 获取环境变量
+PORT = os.getenv("PORT", default=config["PORT"])
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", default=config["OPENAI_API_KEY"])
 openai.api_key = OPENAI_API_KEY
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", default="gpt-3.5-turbo")
-MONGO_URL = os.getenv("MONGO_URL")
-logging.debug(f'PORT = {PORT}')
-logging.debug(f'OPENAI_API_KEY ={OPENAI_API_KEY}')
-logging.debug(f'OPENAI_MODEL ={OPENAI_MODEL}')
-logging.debug(f'MONGO_URL ={MONGO_URL}')
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", default=config["OPENAI_MODEL"])
+MONGO_URL = os.getenv("MONGO_URL", default=config['MONGO_URL'])
+if os.getenv("DEPLOY_ON_RAILWAY") is None:
+    os.environ['HTTP_PROXY'] = config['HTTP_PROXY']
+    os.environ['HTTPS_PROXY'] = config['HTTPS_PROXY']
+else:
+    print("DEPLOY_ON_RAILWAY is not None")
+print("API_KEY=", OPENAI_API_KEY)
+print("MONGO_URL=", MONGO_URL)
 
 # 获取提示列表
 with open("./prompts.json", encoding='utf-8') as f:

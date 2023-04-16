@@ -1,8 +1,8 @@
 {
 "PORT":5000,
-"OPENAI_API_KEY":"XXX",
+"OPENAI_API_KEY":"xxx",
 "OPENAI_MODEL":"gpt-3.5-turbo",
 "HTTP_PROXY":"socks5://127.0.0.1:7890",
 "HTTPS_PROXY":"socks5://127.0.0.1:7890",
-"MONGO_URL":"XXX",
+"MONGO_URL":"mongodb://localhost:27017"
 }

@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="utf-8" />
-    <title>DQA</title>
+    <title>文档问答AI</title>
 </head>
 
 <body>
@@ -38,27 +38,33 @@
     {% if session.get('name') and (session.get('state') in ['prompt', 'chat']) %} 
     <div align="center">
     <form id="prompt" method="post" action="{{url_for('prompt')}}" style="background:#f3f3f3; width:600px;" onSubmit= "javascript:prompt_idx.disabled=false;prompt_txt.disabled=false"><br/>
-        <label>选择角色：</label>
-        <script>
-        function select() {
-            var prompt_idx = document.getElementById("prompt_idx").selectedIndex;
-            prompts = {{prompts|tojson}}
-            prompt = prompts[prompt_idx]['prompt'] ;
-            document.getElementById("prompt_txt").value=prompt;
-        }
-        </script>
-        <select name="prompt_idx" id="prompt_idx" onchange="select()" {% if session['state']=='chat' %}disabled{% endif %} >
-             {% for prompt in prompts %}
-             <option value="{{loop.index0}}" 
-                {% if loop.index0 == session['prompt_idx'] %}selected{% endif %}
-                                            >{{prompt['act']}}</option>
-             {% endfor %}
-        </select> </span><br/><br/>
-        <label style="vertical-align:top">提示：</label>
-        <textarea cols="60" rows="6" name="prompt_txt" id="prompt_txt" style="background:#d0e8ff" {% if session['state']=='chat' %}disabled{% endif %} >{{session['prompt']|trim}}</textarea><br/><br/>
+            <label>选择角色：</label>
+            <script>
+            function select() {
+                var prompt_idx = document.getElementById("prompt_idx").selectedIndex;
+                prompts = {{prompts|tojson}}
+                prompt = prompts[prompt_idx]['prompt'] ;
+                document.getElementById("prompt_txt").value=prompt;
+            }
+            </script>
+            <select name="prompt_idx" id="prompt_idx" onchange="select()" {% if session['state']=='chat' %}disabled{% endif %} >
+                 {% for prompt in prompts %}
+                 <option value="{{loop.index0}}" 
+                    {% if loop.index0 == session['prompt_idx'] %}selected{% endif %}
+                                                >{{prompt['act']}}</option>
+                 {% endfor %}
+            </select> </span><br/><br/>
         {% if session.get('state') == 'prompt' %} {# 提示阶段 #}
+            <label style="vertical-align:top">提示：</label>
+            <textarea cols="60" rows="6" name="prompt_txt" id="prompt_txt" style="background:#d0e8ff" {% if session['state']=='chat' %}disabled{% endif %} >{{session['prompt']|trim}}</textarea><br/><br/>
             <input type="submit" name="submit" value="提交" /> <br/><br/>
         {% elif session.get('state') == 'chat' %}  {# 问答阶段 #}
+            <table border="0" style="width:560px;">
+                <tr>
+                    <td style="vertical-align:top;white-space:nowrap;">提示：</td>
+                    <td style="padding:4px;border-style:solid;border-width:1px;background:#d0e8ff">{{session['prompt']|trim}}</td>
+                </tr>
+            </table><br/>
             <input type="submit" name="submit" value="重来" /> <br/><br/>
         {% else %}        
         {% endif %}
@@ -76,16 +82,16 @@
                 <input type="hidden" name="message_idx" type="number" value="{{loop.index0}}" />
                 <table border="0" style="width:560px;">
                     <tr>
-                        <th style="vertical-align:top;white-space:nowrap;">发问{{"%d"|format((loop.index0+1)/2)}}：</th>
-                        <td style="background:#d0e8ff" >{{message['content']}}</td>
+                        <td style="vertical-align:top;white-space:nowrap;">发问{{"%d"|format((loop.index0+1)/2)}}：</td>
+                        <td style="padding:4px;border-style:solid;border-width:1px;background:#d0e8ff">{{message['content']}}</td>
                     </tr>
-                    <tr><th></th><td></td></tr>
+                    <tr><td></td><td></td></tr>
             {% endif %}
             {# 回答 #}
             {% if (loop.index0 > 0) and (loop.index0 % 2 == 0) %}
                     <tr>
-                        <th style="vertical-align:top;white-space:nowrap;">回答{{"%d"|format(loop.index0/2)}}：</th>
-                        <td style="background:#d0e8ff" >{{message['content']}}</td>
+                        <td style="vertical-align:top;white-space:nowrap;">回答{{"%d"|format(loop.index0/2)}}：</td>
+                        <td style="padding:4px;border-style:solid;border-width:1px;background:#d0e8ff" >{{message['content']}}</td>
                     </tr>
                 </table><br/>
                 <input type="submit" name="submit" value="删除" /><br/><br/>

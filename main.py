@@ -143,10 +143,10 @@ def auth():
 @app.route('/prompt', methods=['POST'])
 def prompt():
     submit = request.form.get('submit')
-    prompt_idx = int(request.form.get('prompt_idx'))
-    prompt_txt = request.form.get('prompt_txt')
     if submit == '提交':
         # 写入问答会话
+        prompt_idx = int(request.form.get('prompt_idx'))
+        prompt_txt = request.form.get('prompt_txt')
         session['prompt_idx'] = prompt_idx
         session['prompt'] = prompt_txt
         messages = [{"role": "system", "content": prompt_txt}]
@@ -229,7 +229,6 @@ def chat():
     elif submit == '删除':
         # message_idx为某轮问答的发问对应的messages索引
         message_idx = request.form.get('message_idx')
-        print("type(message_idx)={}, message_idx={}".format(type(message_idx), message_idx))
         message_idx = int(message_idx)
         if ('messages' not in session) or (message_idx not in [1, 3, 5, 7, 9]):
             return redirect(url_for('index'))

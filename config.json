@@ -4,5 +4,5 @@
 "OPENAI_MODEL":"gpt-3.5-turbo",
 "HTTP_PROXY":"socks5://127.0.0.1:7890",
 "HTTPS_PROXY":"socks5://127.0.0.1:7890",
-"MONGO_URL":"mongodb://mongo:Sr54qcSm3IQryHeSPJRa@containers-us-west-206.railway.app:7517"
+"MONGO_URL":"mongodb://localhost:27017"
 }

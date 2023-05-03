@@ -4,8 +4,8 @@ import os, re, datetime, json
 from flask import Flask, request, redirect, url_for, render_template, session
 from unstructured.partition.doc import partition_doc
 from unstructured.partition.docx import partition_docx
-import requests
-from bs4 import BeautifulSoup
+#import requests
+#from bs4 import BeautifulSoup
 from kqa import KQALangModel, KQADatabase
 
 # 获取全局变量
@@ -169,41 +169,41 @@ def upload():
         # for i, p in enumerate(paragraphs):
         #     print(f"[{i}]{p}")
         return redirect(url_for('index'))
-    elif submit == '抓取':    
-        # 下载网页
-        url = request.form.get('url')
-        response = requests.get(url=url)
-        # 从网页中提取title和paragraphs
-        charset = requests.utils.get_encodings_from_content(response.text)[0]
-        soup = BeautifulSoup( \
-            response.text.encode(response.encoding).decode(charset), \
-            'html.parser', from_encoding=charset)
-        result = soup.find('h1')
-        if result:
-            title = result.text
-        else:
-            result = soup.find('h2')
-            if result:
-                title = result.text
-            else:
-                title = soup.find('title').text
-        title = title.strip()
-        paragraphs = []
-        for p in soup.find_all('p'):
-            if p.text.strip() != "":
-                paragraphs.append(p.text.strip())
-        # 新增文件
-        uid = db.insert_file(name=session['name'], title=title, \
-                                       paragraphs=paragraphs)
-        if uid != None:
-            titles = session['titles']
-            titles.append(title)
-            session['titles'] = titles
-        print(f"抓取: title={title}")
-        # print("paragraphs:")
-        # for i, p in enumerate(paragraphs):
-        #     print("f[{i}]{p}")
-        return redirect(url_for('index'))
+    # elif submit == '抓取':    
+    #     # 下载网页
+    #     url = request.form.get('url')
+    #     response = requests.get(url=url)
+    #     # 从网页中提取title和paragraphs
+    #     charset = requests.utils.get_encodings_from_content(response.text)[0]
+    #     soup = BeautifulSoup( \
+    #         response.text.encode(response.encoding).decode(charset), \
+    #         'html.parser', from_encoding=charset)
+    #     result = soup.find('h1')
+    #     if result:
+    #         title = result.text
+    #     else:
+    #         result = soup.find('h2')
+    #         if result:
+    #             title = result.text
+    #         else:
+    #             title = soup.find('title').text
+    #     title = title.strip()
+    #     paragraphs = []
+    #     for p in soup.find_all('p'):
+    #         if p.text.strip() != "":
+    #             paragraphs.append(p.text.strip())
+    #     # 新增文件
+    #     uid = db.insert_file(name=session['name'], title=title, \
+    #                                    paragraphs=paragraphs)
+    #     if uid != None:
+    #         titles = session['titles']
+    #         titles.append(title)
+    #         session['titles'] = titles
+    #     print(f"抓取: title={title}")
+    #     # print("paragraphs:")
+    #     # for i, p in enumerate(paragraphs):
+    #     #     print("f[{i}]{p}")
+    #     return redirect(url_for('index'))
     elif submit == '删除': 
         title_idx = request.form.get('title_idx')
         title_idx = int(title_idx)

@@ -2,8 +2,8 @@
 # -*- coding: utf-8 -*-
 import os, re, datetime, json
 from flask import Flask, request, redirect, url_for, render_template, session
-from unstructured.partition.doc import partition_doc
-from unstructured.partition.docx import partition_docx
+#from unstructured.partition.doc import partition_doc
+#from unstructured.partition.docx import partition_docx
 #import requests
 #from bs4 import BeautifulSoup
 from kqa import KQALangModel, KQADatabase
@@ -112,8 +112,8 @@ def login():
         session['prompt'] = user['prompt']
         messages = [{"role": "system", "content": user['prompt']}]
         session['messages'] = messages
-    titles = [f['title'] for f in db.find_files_by_user(name)]
-    session['titles'] = titles
+    # titles = [f['title'] for f in db.find_files_by_user(name)]
+    # session['titles'] = titles
     print(f"登录: name={name}, uid={session['uid']}")
     return redirect(url_for('index'))
 
@@ -132,93 +132,93 @@ def logout():
     session.clear()
     return redirect(url_for('index'))    
 
-@app.route('/upload', methods=['POST'])
-def upload():
-    submit = request.form.get('submit')
-    if submit == '上传':
-        if 'file' not in request.files:
-            return redirect(url_for('index'))
-        # 从文件中提取title和paragraphs
-        file = request.files['file']
-        filename, filetype = os.path.splitext(file.filename)
-        title = filename.strip()
-        filetype = filetype.lower()
-        if filetype not in ['.txt', '.doc', '.docx']:
-            # 永不进入：form要求是3种文件类型中的一种。
-            return redirect(url_for('index')) 
-        filepath = "./tmp" # 保存到临时文件中
-        file.save(filepath)
-        if filetype == '.txt':
-            with open(filepath, "r") as f:
-                paragraphs = f.readlines()
-        elif filetype == '.doc':
-            paragraphs = partition_doc(filename=filepath)
-        elif filetype == '.docx':
-            paragraphs = partition_docx(filename=filepath)
-        paragraphs = [str(p).strip() for p in paragraphs \
-                                      if str(p).strip() != ""]
-        # 新增文件
-        uid = db.insert_file(name=session['name'], title=title, \
-                                       paragraphs=paragraphs)
-        if uid != None:
-            titles = session['titles']
-            titles.append(title)
-            session['titles'] = titles
-        print(f"上传: title={title}")
-        # print("paragraphs:")
-        # for i, p in enumerate(paragraphs):
-        #     print(f"[{i}]{p}")
-        return redirect(url_for('index'))
-    # elif submit == '抓取':    
-    #     # 下载网页
-    #     url = request.form.get('url')
-    #     response = requests.get(url=url)
-    #     # 从网页中提取title和paragraphs
-    #     charset = requests.utils.get_encodings_from_content(response.text)[0]
-    #     soup = BeautifulSoup( \
-    #         response.text.encode(response.encoding).decode(charset), \
-    #         'html.parser', from_encoding=charset)
-    #     result = soup.find('h1')
-    #     if result:
-    #         title = result.text
-    #     else:
-    #         result = soup.find('h2')
-    #         if result:
-    #             title = result.text
-    #         else:
-    #             title = soup.find('title').text
-    #     title = title.strip()
-    #     paragraphs = []
-    #     for p in soup.find_all('p'):
-    #         if p.text.strip() != "":
-    #             paragraphs.append(p.text.strip())
-    #     # 新增文件
-    #     uid = db.insert_file(name=session['name'], title=title, \
-    #                                    paragraphs=paragraphs)
-    #     if uid != None:
-    #         titles = session['titles']
-    #         titles.append(title)
-    #         session['titles'] = titles
-    #     print(f"抓取: title={title}")
-    #     # print("paragraphs:")
-    #     # for i, p in enumerate(paragraphs):
-    #     #     print("f[{i}]{p}")
-    #     return redirect(url_for('index'))
-    elif submit == '删除': 
-        title_idx = request.form.get('title_idx')
-        title_idx = int(title_idx)
-        if 'titles' not in session or 'name' not in session:
-            return redirect(url_for('index'))
-        # 删除文件
-        title = session['titles'][title_idx]
-        titles = session['titles']
-        titles.pop(title_idx)
-        session['titles'] = titles
-        db.delete_file(name=session['name'], title=title)
-        print(f"删文: title={title}")
-        return redirect(url_for('index'))
-    else:
-        return redirect(url_for('index'))
+# @app.route('/upload', methods=['POST'])
+# def upload():
+#     submit = request.form.get('submit')
+#     if submit == '上传':
+#         if 'file' not in request.files:
+#             return redirect(url_for('index'))
+#         # 从文件中提取title和paragraphs
+#         file = request.files['file']
+#         filename, filetype = os.path.splitext(file.filename)
+#         title = filename.strip()
+#         filetype = filetype.lower()
+#         if filetype not in ['.txt', '.doc', '.docx']:
+#             # 永不进入：form要求是3种文件类型中的一种。
+#             return redirect(url_for('index')) 
+#         filepath = "./tmp" # 保存到临时文件中
+#         file.save(filepath)
+#         if filetype == '.txt':
+#             with open(filepath, "r") as f:
+#                 paragraphs = f.readlines()
+#         elif filetype == '.doc':
+#             paragraphs = partition_doc(filename=filepath)
+#         elif filetype == '.docx':
+#             paragraphs = partition_docx(filename=filepath)
+#         paragraphs = [str(p).strip() for p in paragraphs \
+#                                       if str(p).strip() != ""]
+#         # 新增文件
+#         uid = db.insert_file(name=session['name'], title=title, \
+#                                         paragraphs=paragraphs)
+#         if uid != None:
+#             titles = session['titles']
+#             titles.append(title)
+#             session['titles'] = titles
+#         print(f"上传: title={title}")
+#         # print("paragraphs:")
+#         # for i, p in enumerate(paragraphs):
+#         #     print(f"[{i}]{p}")
+#         return redirect(url_for('index'))
+#     elif submit == '抓取':    
+#         # 下载网页
+#         url = request.form.get('url')
+#         response = requests.get(url=url)
+#         # 从网页中提取title和paragraphs
+#         charset = requests.utils.get_encodings_from_content(response.text)[0]
+#         soup = BeautifulSoup( \
+#             response.text.encode(response.encoding).decode(charset), \
+#             'html.parser', from_encoding=charset)
+#         result = soup.find('h1')
+#         if result:
+#             title = result.text
+#         else:
+#             result = soup.find('h2')
+#             if result:
+#                 title = result.text
+#             else:
+#                 title = soup.find('title').text
+#         title = title.strip()
+#         paragraphs = []
+#         for p in soup.find_all('p'):
+#             if p.text.strip() != "":
+#                 paragraphs.append(p.text.strip())
+#         # 新增文件
+#         uid = db.insert_file(name=session['name'], title=title, \
+#                                         paragraphs=paragraphs)
+#         if uid != None:
+#             titles = session['titles']
+#             titles.append(title)
+#             session['titles'] = titles
+#         print(f"抓取: title={title}")
+#         # print("paragraphs:")
+#         # for i, p in enumerate(paragraphs):
+#         #     print("f[{i}]{p}")
+#         return redirect(url_for('index'))
+#     elif submit == '删除': 
+#         title_idx = request.form.get('title_idx')
+#         title_idx = int(title_idx)
+#         if 'titles' not in session or 'name' not in session:
+#             return redirect(url_for('index'))
+#         # 删除文件
+#         title = session['titles'][title_idx]
+#         titles = session['titles']
+#         titles.pop(title_idx)
+#         session['titles'] = titles
+#         db.delete_file(name=session['name'], title=title)
+#         print(f"删文: title={title}")
+#         return redirect(url_for('index'))
+#     else:
+#         return redirect(url_for('index'))
 
 @app.route('/prompt', methods=['POST'])
 def prompt():

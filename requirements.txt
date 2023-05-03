@@ -8,4 +8,4 @@ Werkzeug==1.0.1
 openai==0.27.4
 pymongo==4.3.3
 bson==0.5.10
-unstructured==0.5.13
+

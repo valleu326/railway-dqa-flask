@@ -14,14 +14,14 @@ class KQADatabase(object):
         # 获取用户集合
         self.user_col = self.mongo_db['users']
         # 获取文件集合
-        self.file_col = self.mongo_db['files']
+        # self.file_col = self.mongo_db['files']
         
     """
     users集合的文档: 
     _id域，name域, pwd_hash域，prompt域
     """
-    def insert_user(self, name:str="", pwd:str="", \
-                    prompt:str="") -> str:
+    def insert_user(self, name="", pwd="", \
+                    prompt=""):
         # 先保证名称没注册过
         if not name or self.user_exist(name) or not pwd:
             return None
@@ -35,7 +35,7 @@ class KQADatabase(object):
         uid = str(res.inserted_id)
         return uid 
 
-    def find_user(self, name:str="", uid:str="") -> dict:
+    def find_user(self, name="", uid=""):
         if not name and not uid:
             return None
         query = {}
@@ -50,10 +50,10 @@ class KQADatabase(object):
         doc['uid'] = str(doc['_id'])
         return doc
             
-    def user_exist(self, name:str="", uid:str="") -> bool:
+    def user_exist(self, name="", uid=""):
         return (self.find_user(name, uid) != None)
     
-    def validate_user(self, name:str="", pwd:str="") -> bool:
+    def validate_user(self, name="", pwd=""):
         if not name and not pwd:
             return False    # 姓名或密码为空
         user = self.find_user(name)
@@ -61,7 +61,7 @@ class KQADatabase(object):
             return False    # 姓名不存在
         return check_password_hash(user['pwd_hash'], pwd)
 
-    def update_user(self, name:str="", uid:str="", prompt:str="") -> None:
+    def update_user(self, name="", uid="", prompt=""):
         user = self.find_user(name, uid)
         if not user:
             return
@@ -78,52 +78,52 @@ class KQADatabase(object):
     files集合的文档: 
     _id域，name域, title域，paragraphs域
     """
-    def insert_file(self, name:str="", title:str="", \
-                    paragraphs:list[str]=[]) -> str:
-        if not name or not title or not paragraphs:
-            return None
-        # 已经存在就更新paragraphs
-        if self.file_exist(name, title):
-            print("insert_file: update")
-            query = {'name':name, 'title':title}
-            update = {"$set": {'paragraphs':paragraphs,}}
-            self.file_col.update_one(query, update)
-            return None
-        # 不存在才新增doc
-        print("insert_file: insert")
-        doc = {'name':name, 'title':title, \
-                       'paragraphs':paragraphs}
-        res = self.file_col.insert_one(doc)
-        uid = str(res.inserted_id)
-        return uid
+    # def insert_file(self, name:str="", title:str="", \
+    #                 paragraphs:list[str]=[]) -> str:
+    #     if not name or not title or not paragraphs:
+    #         return None
+    #     # 已经存在就更新paragraphs
+    #     if self.file_exist(name, title):
+    #         print("insert_file: update")
+    #         query = {'name':name, 'title':title}
+    #         update = {"$set": {'paragraphs':paragraphs,}}
+    #         self.file_col.update_one(query, update)
+    #         return None
+    #     # 不存在才新增doc
+    #     print("insert_file: insert")
+    #     doc = {'name':name, 'title':title, \
+    #                    'paragraphs':paragraphs}
+    #     res = self.file_col.insert_one(doc)
+    #     uid = str(res.inserted_id)
+    #     return uid
     
-    def find_files_by_user(self, name:str="") -> list:
-        if not name:
-            return []
-        query = {'name':name}
-        results = list(self.file_col.find(query))
-        # result可能为[]
-        return results
+    # def find_files_by_user(self, name:str="") -> list:
+    #     if not name:
+    #         return []
+    #     query = {'name':name}
+    #     results = list(self.file_col.find(query))
+    #     # result可能为[]
+    #     return results
 
-    def find_file(self, name:str="", title:str="") -> dict:
-        if not name or not title:
-            return None
-        query = {'name':name, 'title':title}
-        result = list(self.file_col.find(query))
-        if result == []:
-            return None
-        doc = result[0]
-        return doc
+    # def find_file(self, name:str="", title:str="") -> dict:
+    #     if not name or not title:
+    #         return None
+    #     query = {'name':name, 'title':title}
+    #     result = list(self.file_col.find(query))
+    #     if result == []:
+    #         return None
+    #     doc = result[0]
+    #     return doc
     
-    def file_exist(self, name:str="", title:str="") -> bool:
-        return (self.find_file(name, title) != None)
+    # def file_exist(self, name:str="", title:str="") -> bool:
+    #     return (self.find_file(name, title) != None)
 
-    def delete_file(self, name:str="", title:str=""):
-        if not name or not title:
-            return
-        query = {'name':name, 'title':title}
-        self.file_col.delete_one(query)
-        return
+    # def delete_file(self, name:str="", title:str=""):
+    #     if not name or not title:
+    #         return
+    #     query = {'name':name, 'title':title}
+    #     self.file_col.delete_one(query)
+    #     return
 
 class KQALangModel(object):
     def __init__(self, openai_api_key, openai_model):

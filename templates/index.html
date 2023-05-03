@@ -2,116 +2,212 @@
 <html>
 <head>
     <meta charset="utf-8" />
-    <title>文档问答AI</title>
+    <title>知识问答AI</title>
+    <style>
+    .textbox {
+        padding:4px;
+        border-style:solid;
+        border-width:1px;
+        background:#d0e8ff
+    }
+    textarea {
+        background:#d0e8ff
+    }
+    .blockbox {
+        background:#f3f3f3;
+    }
+    .short_text {
+        width:95%;
+        box-sizing:border-box;
+        -webkit-box-sizing:border-box;
+        -moz-box-sizing:border-box;
+    }
+    </style>
 </head>
 
 <body>
     {# 验证部分 #}
-    {% if (not session.get('state')) or (not session.get('name')) %}
-        {# 没有登录 #}
+    {% if (not state) or (state == 'login') %} {# 登录模块 #}
         <div align="center">
-        <form method="post" action="{{url_for('auth')}}">
-            <img src="{{url_for('static', filename='logo.png')}}" text="logo" height="18" width="32">&nbsp;    
-            <label>账号：</label><input type="text" name="name" size="12" /> &nbsp;
-            <label>密码：</label><input type="password" name="pwd" size="12" /> &nbsp;
-            <input type="submit" name="submit" value="登录" /> &nbsp;
-            <input type="submit" name="submit" value="注册" disabled /> &nbsp;
+        <form method="post" action="{{url_for('login')}}">
+            <img src="{{url_for('static', filename='logo.png')}}" 
+                                text="logo" height="18" width="32">&nbsp;    
+            <label>账号：</label>
+            <input type="text" name="name" required size="12" />&nbsp;
+            <label>密码：</label>
+            <input type="password" name="pwd" required size="12" />&nbsp;
+            <input type="submit" name="submit" value="登录" />&nbsp;
+            {# url_for('auth', register=1)为/auth?register=1 #}
+            <a href="{{url_for('register')}}">注册</a>&nbsp;
             {% if auth_msg %} 
                 <span style="color:red;">{{auth_msg}}</span> 
             {% endif %} 
         </form>
         </div>
-    {% else %}
-        <div>
-        {# 成功登录 #}
+    {% elif state == 'register' %} {# 注册模块 #}
         <div align="center">
-        <form method="post" action="{{url_for('auth')}}">
-            <img src="{{url_for('static', filename='logo.png')}}" text="logo" height="18" width="32">&nbsp;    
+        <form method="post" action="{{url_for('register')}}">
+            <img src="{{url_for('static', filename='logo.png')}}" 
+                                text="logo" height="18" width="32">&nbsp;    
+            <label>账号：</label>
+            <input type="text" name="name" required size="12" />&nbsp;
+            <label>密码：</label>
+            <input type="password" name="pwd" required size="12" />&nbsp;
+            <label>重复密码：</label>
+            <input type="password" name="pwd2" required size="12" />&nbsp;
+            <input type="submit" name="submit" value="注册" />&nbsp;
+            {% if auth_msg %} 
+                <span style="color:red;">{{auth_msg}}</span> 
+            {% endif %}
+        </form>
+        </div>
+    {% elif state in ['prompt', 'chat'] %} {# 登出模块 #}
+        <div align="center">
+        <form method="post" action="{{url_for('logout')}}">
+            <img src="{{url_for('static', filename='logo.png')}}" 
+                            text="logo" height="18" width="32">&nbsp;    
             <label>账号：</label>{{session['name']}} &nbsp;
             <input type="submit" name="submit" value="登出" /> &nbsp; 
+            {% if auth_msg %}<span>{{auth_msg}}</span>{% endif %}
         </form>   
-        <hr style="width:600px;" />
+        <hr width="600" />
         </div>
     {% endif %}
     
-    {# 提示部分 #}
-    {% if session.get('name') and (session.get('state') in ['prompt', 'chat']) %} 
+    
+{# 正文区域：左边为上传部分，右边为提示部分和问答部分。 #}
+{% if state and state in ['prompt', 'chat'] %}
     <div align="center">
-    <form id="prompt" method="post" action="{{url_for('prompt')}}" style="background:#f3f3f3; width:600px;" onSubmit= "javascript:prompt_idx.disabled=false;prompt_txt.disabled=false"><br/>
-            <label>选择角色：</label>
-            <script>
-            function select() {
-                var prompt_idx = document.getElementById("prompt_idx").selectedIndex;
-                prompts = {{prompts|tojson}}
-                prompt = prompts[prompt_idx]['prompt'] ;
-                document.getElementById("prompt_txt").value=prompt;
-            }
-            </script>
-            <select name="prompt_idx" id="prompt_idx" onchange="select()" {% if session['state']=='chat' %}disabled{% endif %} >
-                 {% for prompt in prompts %}
-                 <option value="{{loop.index0}}" 
-                    {% if loop.index0 == session['prompt_idx'] %}selected{% endif %}
-                                                >{{prompt['act']}}</option>
-                 {% endfor %}
-            </select> </span><br/><br/>
-        {% if session.get('state') == 'prompt' %} {# 提示阶段 #}
-            <label style="vertical-align:top">提示：</label>
-            <textarea cols="60" rows="6" name="prompt_txt" id="prompt_txt" style="background:#d0e8ff" {% if session['state']=='chat' %}disabled{% endif %} >{{session['prompt']|trim}}</textarea><br/><br/>
-            <input type="submit" name="submit" value="提交" /> <br/><br/>
-        {% elif session.get('state') == 'chat' %}  {# 问答阶段 #}
-            <table border="0" style="width:560px;">
-                <tr>
-                    <td style="vertical-align:top;white-space:nowrap;">提示：</td>
-                    <td style="padding:4px;border-style:solid;border-width:1px;background:#d0e8ff">{{session['prompt']|trim}}</td>
-                </tr>
-            </table><br/>
+    <table border="0" width="600">
+    <tr >
+    <td valign="top" class="blockbox" width="200">
+    {# 上传部分 #}
+    {# 提交文件 #}
+    <div align="center" >
+    <form action="{{url_for('upload')}}" method="post" enctype=
+        "multipart/form-data" style="width:180px;" ><br/>
+        <label style="position:relative;left:-55px;">文件：</label>
+        <input type="file" name="file" class="short_text" 
+                                    accept=".txt,.doc,.docx"/>
+        <br/>
+        <input type="submit" name="submit" value="上传" /><br/>
+    </form>
+    <br/>
+    </div>
+    {# 抓取网页 #}
+    <div align="center">
+    <form action="{{url_for('upload')}}" method="post" enctype=
+        "multipart/form-data" style="width:180px;" >
+        <label style="position:relative;left:-55px;">网页：</label>
+        <input type="text" name="url" required size="18" />
+        <input type="submit" name="submit" value="抓取" /><br/>
+    </form>
+    <hr width="180" />
+    </div>
+    {# 标题列表 #}
+    {% for title in session.get('titles') %}
+        <div align="center">
+        <form action="{{url_for('upload')}}" method="post"
+                                         style="width:180px;" >
+            <img src="{{url_for('static', filename='file.png')}}" 
+                            text="file" height="16" width="16">
+            {% if title|length <= 20 %}
+            <label class="short_text">{{title}}</label><br>
+            {% else %}
+            <label class="short_text">{{title[:20]}}...</label><br>
+            {% endif %}
+            <input type="hidden" name="title_idx" 
+                            value="{{loop.index0}}" />
+            <input type="submit" name="submit" value="删除" /><br/>
+        </form>
+        </div><br/>
+    {% endfor %}
+    </td>
+    <td valign="top" width="400"> 
+    {# 提示部分 #}
+    <div align="center">
+    <form action="{{url_for('prompt')}}" method="post"  
+                            class="blockbox" style="width:400px;" ><br/>
+        {% if state == 'prompt' %} {# 提示阶段 #}
+            <span style="display:block;float:left;margin-left:30px;">
+            <label>提示：</label>
+            </span><br/>
+            <textarea  name="prompt" cols="40" rows="6"></textarea><br/><br/>
+            <input type="submit" name="submit" value="提交" /><br/><br/>
+            {% if prompt_msg %} 
+                <span style="color:red;">{{prompt_msg}}</span><br/><br/> 
+            {% endif %} 
+        {% elif state == 'chat' %}  {# 问答阶段 #}
+            <table border="0" width="360">
+                <tr><td>提示：</td></tr>
+                <tr><td class="textbox">
+                        {{session.get('prompt')}}
+                </td></tr>
+            </table>
             <input type="submit" name="submit" value="重来" /> <br/><br/>
         {% else %}        
         {% endif %}
     </form>
     </div><br />
-    {% endif %}
-    
     {# 问答部分  #}
-    {% if session.get('name') and session.get('prompt_idx') and session.get('prompt') and session.get('messages') and session.get('state') == 'chat' %}
+    {% if state == 'chat' %}
+        {# 问答历史 #}
         {% for message in session.get('messages') %}
-            {# 发问 #}
-            {% if (loop.index0 > 0) and (loop.index0 % 2 == 1) %} 
+            {% if (loop.index0 > 0) and (loop.index0 % 2 == 1) %} {# 发问 #}
             <div align="center">
-            <form method="post" action="{{url_for('chat')}}" style="background:#f3f3f3; width:600px;"><br/>
-                <input type="hidden" name="message_idx" type="number" value="{{loop.index0}}" />
-                <table border="0" style="width:560px;">
+            <form method="post" action="{{url_for('chat')}}" 
+                    class="blockbox" style="width:400px;"><br/>
+                <input type="hidden" name="message_idx" 
+                                value="{{loop.index0}}" />
+                <table border="0" width="360">
                     <tr>
-                        <td style="vertical-align:top;white-space:nowrap;">发问{{"%d"|format((loop.index0+1)/2)}}：</td>
-                        <td style="padding:4px;border-style:solid;border-width:1px;background:#d0e8ff">{{message['content']}}</td>
+                        <td>
+                            发问{{"%d"|format((loop.index0+1)/2)}}：
+                        </td>
                     </tr>
-                    <tr><td></td><td></td></tr>
+                    <tr>
+                        <td class="textbox">
+                            {{message['content']|replace('\n','<br/>')|safe}}
+                        </td>
+                    </tr>
             {% endif %}
-            {# 回答 #}
-            {% if (loop.index0 > 0) and (loop.index0 % 2 == 0) %}
+            {% if (loop.index0 > 0) and (loop.index0 % 2 == 0) %} {# 回答 #}
                     <tr>
-                        <td style="vertical-align:top;white-space:nowrap;">回答{{"%d"|format(loop.index0/2)}}：</td>
-                        <td style="padding:4px;border-style:solid;border-width:1px;background:#d0e8ff" >{{message['content']}}</td>
+                        <td>
+                            回答{{"%d"|format(loop.index0/2)}}：
+                        </td>
                     </tr>
-                </table><br/>
+                    <tr>
+                        <td class="textbox" >
+                            {{message['content']|replace('\n','<br/>')|safe}}
+                        </td>
+                    </tr>
+                </table>
                 <input type="submit" name="submit" value="删除" /><br/><br/>
             </form>
             </div><br/>
             {% endif %} 
         {% endfor %}
-    
-        {# 下一个发问 #}
-        {% if session.get('messages')|length < 7 %} {# 最多只有3轮问答 #}
+        {# 再次发问 #}
+        {% if session.get('messages')|length < 7 %} {# 最多3轮问答 #}
             <div align="center">
-            <form method="post" action="{{url_for('chat')}}" style="background:#f3f3f3; width:600px;"><br/>
-            <label style="vertical-align:top">发问：</label><textarea cols="60" rows="6" name="chat_ask" style="background:#d0e8ff" ></textarea><br/><br/>
-            <input type="submit" name="submit" value="发送" /> <br/><br/>
-            {% if chat_msg %} 
-                <span style="color:red;">{{chat_msg}}</span><br/><br/> 
-            {% endif %} 
+            <form method="post" action="{{url_for('chat')}}" 
+                    class="blockbox" style="width:400px;"><br/>
+                <span style="display:block;float:left;margin-left:30px;">
+                <label>发问：</label>
+                </span><br/>
+                <textarea name="chat_ask" cols="40" rows="6"></textarea><br/>
+                <input type="submit" name="submit" value="发送" /> <br/><br/>
+                {% if chat_msg %} 
+                    <span style="color:red;">{{chat_msg}}</span><br/><br/> 
+                {% endif %} 
             </form>
-            </div><br />
+            </div>
         {% endif %}
+    </td></tr>
+    </table>
+    </div>
     {% endif %}
+{% endif %}
 </body>
 </html>

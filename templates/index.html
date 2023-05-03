@@ -81,7 +81,47 @@
     <table border="0" width="600">
     <tr >
     <td valign="top" class="blockbox" width="200">
-
+    {# 上传部分 #}
+    {# 提交文件 #}
+    <div align="center" >
+    <form action="{{url_for('upload')}}" method="post" enctype=
+        "multipart/form-data" style="width:180px;" ><br/>
+        <label style="position:relative;left:-55px;">文件：</label>
+        <input type="file" name="file" class="short_text" 
+                                    accept=".txt,.doc,.docx"/>
+        <br/>
+        <input type="submit" name="submit" value="上传" /><br/>
+    </form>
+    <br/>
+    </div>
+    {# 抓取网页 #}
+    <div align="center">
+    <form action="{{url_for('upload')}}" method="post" enctype=
+        "multipart/form-data" style="width:180px;" >
+        <label style="position:relative;left:-55px;">网页：</label>
+        <input type="text" name="url" required size="18" />
+        <input type="submit" name="submit" value="抓取" /><br/>
+    </form>
+    <hr width="180" />
+    </div>
+    {# 标题列表 #}
+    {% for title in session.get('titles') %}
+        <div align="center">
+        <form action="{{url_for('upload')}}" method="post"
+                                         style="width:180px;" >
+            <img src="{{url_for('static', filename='file.png')}}" 
+                            text="file" height="16" width="16">
+            {% if title|length <= 20 %}
+            <label class="short_text">{{title}}</label><br>
+            {% else %}
+            <label class="short_text">{{title[:20]}}...</label><br>
+            {% endif %}
+            <input type="hidden" name="title_idx" 
+                            value="{{loop.index0}}" />
+            <input type="submit" name="submit" value="删除" /><br/>
+        </form>
+        </div><br/>
+    {% endfor %}
     </td>
     <td valign="top" width="400"> 
     {# 提示部分 #}

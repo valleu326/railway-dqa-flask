@@ -1,11 +1,20 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+import re
+import numpy as np
 import pymongo
 from bson.objectid import ObjectId
 from werkzeug.security import generate_password_hash, check_password_hash
 import openai
+import tiktoken
+import pinecone
 
-class KQADatabase(object):
+# =============================================================================
+# KQA数据库：以MongoDB为基础
+#  - users集合：存储每个用户的个人信息
+#  - files集合：存储每个文件的文本信息
+# =============================================================================
+class KQAMongoDB(object):
     def __init__(self, mongo_url):
         # 获得MongoDB客户端
         self.mongo_cli = pymongo.MongoClient(mongo_url)
@@ -77,23 +86,21 @@ class KQADatabase(object):
     files集合的文档: 
     _id域，name域, title域，paragraphs域
     """
-    def insert_file(self, name="", title="", paragraphs=[]):
-        if not name or not title or not paragraphs:
+    def insert_file(self, name="", title="", paragraphs=[], chunks=[]):
+        if not name or not title or not paragraphs or not chunks:
             return None
         # 已经存在就更新paragraphs
         if self.file_exist(name, title):
-            print("insert_file: update")
             query = {'name':name, 'title':title}
-            update = {"$set": {'paragraphs':paragraphs,}}
+            update = {"$set": {'paragraphs':paragraphs, 'chunks':chunks}}
             self.file_col.update_one(query, update)
             return None
         # 不存在才新增doc
-        print("insert_file: insert")
         doc = {'name':name, 'title':title, \
-                        'paragraphs':paragraphs}
+               'paragraphs':paragraphs, 'chunks':chunks}
         res = self.file_col.insert_one(doc)
-        uid = str(res.inserted_id)
-        return uid
+        file_id = str(res.inserted_id)
+        return file_id
     
     def find_files_by_user(self, name=""):
         if not name:
@@ -103,14 +110,19 @@ class KQADatabase(object):
         # result可能为[]
         return results
 
-    def find_file(self, name="", title=""):
-        if not name or not title:
+    def find_file(self, name="", title="", file_id=""):
+        if not ((name and title) or (name and file_id)):
             return None
-        query = {'name':name, 'title':title}
+        query = {'name':name}
+        if title:
+            query['title'] = title
+        if file_id:
+            query['_id'] = ObjectId(file_id)
         result = list(self.file_col.find(query))
         if result == []:
             return None
         doc = result[0]
+        doc['fid'] = str(doc['_id'])
         return doc
     
     def file_exist(self, name="", title=""):
@@ -123,19 +135,38 @@ class KQADatabase(object):
         self.file_col.delete_one(query)
         return
 
-class KQALangModel(object):
-    def __init__(self, openai_api_key, openai_model):
+
+# =============================================================================
+# KQA模型：以OpenAI模型为基础
+#   - chat模型：以交谈方式回复用户问题
+#   - embedding模型：对每个文件的文本信息进行嵌入
+# =============================================================================
+class KQAOpenAI(object):
+    MIN_TOKENS = 256     # 每个chunk的最小token数
+    MIDDLE_TOKENS = 384  # 每个chunk的期望token数
+    MAX_TOKENS = 512     # 每个chunk的最大token数
+    
+    def __init__(self, openai_api_key, \
+                 openai_chat_model, openai_embed_model):
         # 设置openai的api key
         openai.api_key = openai_api_key
-        # openai_model是"gpt-3.5-turbo"或"gpt-4"
-        self.openai_model = openai_model
+        # chat_model"gpt-3.5-turbo"或"gpt-4"
+        self.chat_model = openai_chat_model
+        self.embed_model = openai_embed_model
+        # cl100k_base编码用在gpt-4、gpt-3.5-turbo、text-embedding-ada-002上
+        # self.encoding = tiktoken.encoding_for_model("gpt-4")
+        # self.encoding = tiktoken.encoding_for_model("text-embedding-ada-002")
+        self.encoding = tiktoken.get_encoding("cl100k_base")
     
-    def answer(self, messages):
+    """
+    chat模型：OpenAI的chatgpt或gpt4
+    """
+    def qa(self, messages):
         err_msg = ""
         try:
             #Make your OpenAI API request here
             completion = openai.ChatCompletion.create(
-                                        model=self.openai_model,
+                                        model=self.chat_model,
                                         messages=messages,
                                         temperature=0.6,
                                         max_tokens=2048) 
@@ -163,5 +194,206 @@ class KQALangModel(object):
             err_msg = "OpenAI API格式错误"
             print(f"OpenAI API return format error: completion={completion}")
             return (False, err_msg)
-        chat_answer = completion.choices[0].message.content
-        return (True, chat_answer)
+        answer = completion.choices[0].message.content
+        return (True, answer)
+    
+    """
+    embedding模型：OpenAI的text-embedding-ada-002
+    """
+    # 嵌入query
+    def embed_query(self, query):
+        result = openai.Embedding.create(input=query, \
+                                         model=self.embed_model)
+        embedding = result['data'][0]['embedding']
+        return embedding
+    
+    # 嵌入document
+    def embed_document(self, paragraphs):
+        chunks = []
+        for paragraph in paragraphs:
+            num_tokens = len(self.encoding.encode(paragraph))
+            if num_tokens < self.MAX_TOKENS:
+                chunks.append(paragraph)
+            else:
+                paragraph_chunks = self.split_paragraph(paragraph)
+                chunks.extend(paragraph_chunks)
+        new_chunks = self.merge_chunks(chunks)
+        result = openai.Embedding.create(input=new_chunks, \
+                                         model=self.embed_model)
+        embeddings = [item['embedding'] for item in result['data']]
+        return (new_chunks, embeddings)
+        
+    # 合并区块：有重叠部分
+    def merge_chunks(self, chunks):
+        # 尽量让每个chunk的token数接近并<= MIDDEL_TOKENS
+        new_chunks = []
+        chunk = chunks[0]
+        for i in range(1, len(chunks)):
+            if len(chunk) + len(chunks[i]) < self.MIN_TOKENS:
+                chunk += chunks[i]
+                if i == len(chunks) - 1:
+                    # 如果不超过MAX_TOKENS，可以合并最后两个新的chunk
+                    if len(new_chunks) > 0 and \
+                        len(new_chunks[-1][0])+ len(chunk) < self.MAX_TOKENS:
+                        new_chunks[-1][1] = chunk
+                    else: # 几乎不进来：前一个chunk略>256，后一个chunk<256
+                        new_chunks.append([chunk, ""]) # overlap为""
+            else:
+                is_ended = False
+                # 让前后两个chunk的重叠token数为MIDDLE_TOKENS - MIN_TOKENS
+                # 也就是说chunk和overlap的token数接近并 <= MIDDLE_TOKENS
+                overlap = ""
+                for j in range(i, len(chunks)):
+                    if len(chunk) + len(overlap) + len(chunks[j]) \
+                            < self.MIDDLE_TOKENS:
+                        overlap += chunks[j]
+                        if j == len(chunks) - 1:
+                            is_ended = True
+                    else:
+                        break
+                new_chunks.append([chunk, overlap])
+                chunk = chunks[i]
+                if is_ended:
+                    break;
+        new_chunks = [new_chunks[i][0] + new_chunks[i][1] \
+                              for i in range(len(new_chunks))]
+        return new_chunks
+                
+    # 合并句子：没有重叠部分
+    def merge_sentences(self, sentences, num_chunks):
+        data = openai.Embedding.create(input=sentences, \
+                        model=self.embed_model)['data']
+        # data[i]['embedding']类型为python list，需要转为numpy array
+        embeddings = [np.array(item['embedding']) for item in data]
+        num_tokens = [len(self.encoding.encode(s)) for s in sentences]
+        chunks = [{'text':sentences[i], 'embedding':embeddings[i],\
+                   'num_tokens':num_tokens[i], 'num_sentences':1} \
+                  for i in range(len(sentences))]
+        while len(chunks) > num_chunks:
+            max_lhs = 0
+            max_dot_product = chunks[0]['embedding'].dot(chunks[1]['embedding'])
+            for lhs in range(1, len(chunks) - 1): # rhs = lhs + 1
+                dot_product = chunks[lhs]['embedding'].dot(\
+                                    chunks[lhs+1]['embedding'])
+                merged_tokens = chunks[lhs]['num_tokens'] + \
+                                chunks[lhs+1]['num_tokens']
+                if max_dot_product < dot_product \
+                        and merged_tokens < self.MAX_TOKENS:
+                    max_lhs = lhs
+                    max_dot_product = dot_product
+            chunks[max_lhs]['text'] += chunks[max_lhs+1]['text']
+            chunks[max_lhs]['embeddings'] = \
+        (chunks[max_lhs]['embedding'] * chunks[max_lhs]['num_sentences'] +\
+         chunks[max_lhs+1]['embedding'] * chunks[max_lhs+1]['num_sentences']) /\
+        (chunks[max_lhs]['num_sentences'] + chunks[max_lhs+1]['num_sentences'])
+            chunks[max_lhs]['num_tokens'] += chunks[max_lhs+1]['num_tokens']
+            chunks[max_lhs]['num_sentences'] += chunks[max_lhs+1]['num_sentences']
+            chunks.pop(max_lhs+1)
+        chunks = [chunks[i]['text'] for i in range(len(chunks))]
+        return chunks
+    
+    # 分割段落：段落 -> 句子s -> 区块s
+    def split_paragraph(self, paragraph):
+        num_tokens = len(self.encoding.encode(paragraph))
+        if num_tokens < self.MAX_TOKENS:
+            chunks = [paragraph,]
+            return chunks
+        
+        # num_tokens >= MAX_TOKENS
+        # 划分段落为句子：paragraph -> sentences
+        sentences = re.split("(\.|\!|\?|。|？|！)", paragraph)
+        sentences = [sentences[2*i] + sentences[2*i+1] \
+                     for i in range(int(len(sentences)/2))]
+        # num_chunks为chunk数，至少>=2
+        num_chunks = num_tokens // self.MIN_TOKENS 
+        if len(sentences) <= num_chunks: # 增加逗号、分号和冒号
+            sentences = re.split(\
+                        "(\,|\;|\:|\.|\!|\?|，|；|：|。|？|！)", paragraph)
+            sentences = [sentences[2*i] + sentences[2*i+1] \
+                         for i in range(int(len(sentences)/2))]
+        if len(sentences) <= num_chunks:
+            chunk_length = int(len(paragraph) / (num_chunks+1))
+            chunks = []
+            for i in range(num_chunks+1):
+                chunks.append(paragraph[i*chunk_length, (i+1)*chunk_length])
+            return chunks
+        
+        # len(sentences) > num_chunks
+        # 合并句子为区块：sentences -> chunks
+        print("sentecese: len=", len(sentences))
+        chunks = self.merge_sentences(sentences, num_chunks)
+        return chunks
+        
+# =============================================================================
+# KQA向量数据库：以Pinecone为基础
+#   - kqa索引：存储每个chunk的嵌入表示
+# =============================================================================
+class KQAPinecone(object):
+    def __init__(self, pinecone_api_key):
+        pinecone.init(api_key=pinecone_api_key, environment="us-west1-gcp-free")
+        self.index_name = 'kqa'
+        if self.index_name not in pinecone.list_indexes():
+            # OpenAI的Embedding API的维数是1536
+            pinecone.create_index(name=self.index_name, dimension=1536)
+        self.index = pinecone.Index(index_name=self.index_name)
+        
+    @staticmethod
+    def fid2eid(file_id, idx):
+        return file_id + ":" + str(idx)
+    
+    @staticmethod
+    def eid2fid(embed_id):
+        file_id, idx = embed_id.rsplit(':', 1)
+        idx = int(idx)
+        return (file_id, idx)
+        
+    def insert(self, file_id="", embeddings=[]):
+        if not file_id or not embeddings:
+            return
+        vectors = []
+        for idx in range(len(embeddings)):
+            embed_id = self.fid2eid(file_id, idx)
+            vectors.append((embed_id, embeddings[idx]))
+        # 没有指定namespace会使用默认的namespace
+        response = self.index.upsert(vectors=vectors)
+        print(f"type(response)={type(response)}")
+        print(f"reponse={response}")
+        if hasattr(response, 'upsertedCount'):
+            print(f"response.upsertedCount={response.upsertedCount}")
+        return response.upsertedCount # response.upserted_count
+    
+    def query(self, query_embedding, top_k=1):
+        # 没有指定namespace会使用默认的namespace
+        result = self.index.query(vector=query_embedding, top_k=top_k)
+        if not result.matches:
+            return None
+        embed_ids = [match.id for match in result.matches]
+        scores = [match.score for match in result.matches]
+        print(f"scores: {scores}")
+        fid_and_cid_list = [self.eid2fid(embed_ids[i]) \
+                                     for i in range(len(embed_ids)) ]
+        return fid_and_cid_list
+        
+    def delete(self, file_id="", num_embeddings=0):
+        if not file_id or not num_embeddings:
+            return
+        ids = []
+        for idx in range(num_embeddings):
+            embed_id = self.fid2eid(file_id, idx)
+            ids.append(embed_id)
+        # 没有指定namespace会使用默认的namespace
+        self.index.delete(ids=ids)
+        return 
+    
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        

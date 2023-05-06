@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>知识问答AI</title>
+    <style>
+    .blockbox {
+        padding-left:10px;
+        padding-right:10px;
+    }
+    </style>
+</head>
+
+<body>
+<div align="center">
+<h2>{{title}}</h2>
+<hr width="800" />
+<table border="0" width="800" cellspacing="0" cellpadding="0">
+    <tr>
+        <td width="400" style="border-right: 1px solid #000000;" class="blockbox">分段:</td>
+        <td width="400" class="blockbox">分块:</td>
+    </tr>
+    <tr>
+        <td valign="top" class="blockbox" width="400" 
+                style="border-right: 1px solid #000000;">
+        {% for paragraph in paragraphs %}
+            <p>
+            [{{loop.index0}}]{{paragraph}}
+            </p>
+        {% endfor %}
+        </td>
+        <td valign="top" class="blockbox" width="400">
+        {% for chunk in chunks %}
+            <p>
+            [{{loop.index0}}]{{chunk}}
+            </p>
+        {% endfor %}
+        </td>
+    </tr>
+</table>
+</div>
+</body>

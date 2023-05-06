@@ -22,6 +22,9 @@
         -webkit-box-sizing:border-box;
         -moz-box-sizing:border-box;
     }
+    a:link, a:visited, a:hover, a:active {
+        text-decoration: none; 
+    }
     </style>
 </head>
 
@@ -81,40 +84,45 @@
     <table border="0" width="600">
     <tr >
     <td valign="top" class="blockbox" width="200">
-    {# 上传部分 #}
+    {# 文档部分 #}
     {# 提交文件 #}
     <div align="center" >
     <form action="{{url_for('upload')}}" method="post" enctype=
         "multipart/form-data" style="width:180px;" ><br/>
-        <label style="position:relative;left:-55px;">文件：</label>
         <input type="file" name="file" class="short_text" 
                                     accept=".txt,.doc,.docx"/>
-        <br/>
-        <input type="submit" name="submit" value="上传" /><br/>
+        <input type="submit" name="submit" value="上传文件" /><br/>
     </form>
     <br/>
     </div>
     {# 抓取网页 #}
     <div align="center">
-    <form action="{{url_for('upload')}}" method="post" enctype=
+    <form action="{{url_for('crawl')}}" method="post" enctype=
         "multipart/form-data" style="width:180px;" >
-        <label style="position:relative;left:-55px;">网页：</label>
         <input type="text" name="url" required size="18" />
-        <input type="submit" name="submit" value="抓取" /><br/>
+        <input type="submit" name="submit" value="抓取网页" /><br/>
     </form>
     <hr width="180" />
     </div>
     {# 标题列表 #}
     {% for title in session.get('titles') %}
         <div align="center">
-        <form action="{{url_for('upload')}}" method="post"
+        <form action="{{url_for('delete')}}" method="post"
                                          style="width:180px;" >
             <img src="{{url_for('static', filename='file.png')}}" 
                             text="file" height="16" width="16">
             {% if title|length <= 20 %}
-            <label class="short_text">{{title}}</label><br>
+            <label class="short_text">
+                <a href="{{url_for('read', title_idx=loop.index0)}}">
+                    {{title}}
+                </a>
+            </label><br>
             {% else %}
-            <label class="short_text">{{title[:20]}}...</label><br>
+            <label class="short_text">
+                <a href="{{url_for('read', title_idx=loop.index0)}}">
+                    {{title[:20]}}...
+                </a>
+            </label><br>
             {% endif %}
             <input type="hidden" name="title_idx" 
                             value="{{loop.index0}}" />
@@ -196,7 +204,7 @@
                 <span style="display:block;float:left;margin-left:30px;">
                 <label>发问：</label>
                 </span><br/>
-                <textarea name="chat_ask" cols="40" rows="6"></textarea><br/>
+                <textarea name="question" cols="40" rows="6"></textarea><br/>
                 <input type="submit" name="submit" value="发送" /> <br/><br/>
                 {% if chat_msg %} 
                     <span style="color:red;">{{chat_msg}}</span><br/><br/> 

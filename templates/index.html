@@ -26,6 +26,25 @@
         text-decoration: none; 
     }
     </style>
+    <script text="text/javascript">
+        function on_click(idx) {
+            var buttons = 
+                document.getElementsByClassName('button');
+            var button = buttons[idx];
+            var contexts = 
+                document.getElementsByClassName('context');
+            var context = contexts[idx];
+            
+            if (context.style.display == "none") {
+                context.style.display = "block";
+                button.innerHTML = "<<<折叠";
+            }else if (context.style.display == "block") {
+                context.style.display = "none";
+                button.innerHTML = ">>>展开";
+            }
+            return false;
+        }
+    </script>
 </head>
 
 <body>
@@ -113,7 +132,8 @@
                             text="file" height="16" width="16">
             {% if title|length <= 20 %}
             <label class="short_text">
-                <a href="{{url_for('read', title_idx=loop.index0)}}">
+                <a href="{{url_for('read', title_idx=loop.index0)}}" 
+                                                        target="_blank">
                     {{title}}
                 </a>
             </label><br>
@@ -176,6 +196,20 @@
                     <tr>
                         <td class="textbox">
                             {{message['content']|replace('\n','<br/>')|safe}}
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            节选{{"%d"|format((loop.index0+1)/2)}}：
+                            {# ci为context indxe #}
+                            {% set ci = ((loop.index0-1)/2)|int %}
+                            <a href="javascript:on_click({{ci}});"
+                                                 class="button">>>>展开</a>
+                        </td>
+                    </tr>
+                    <tr class="context" style="display:none">
+                        <td class="textbox">
+                            {{session.get('contexts')[ci]|safe}}
                         </td>
                     </tr>
             {% endif %}

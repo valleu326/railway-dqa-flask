@@ -9,6 +9,7 @@ from requests.utils import get_encoding_from_headers, get_encodings_from_content
 import chardet
 from bs4 import BeautifulSoup
 from kqa import KQAOpenAI, KQAMongoDB, KQAPinecone
+from serpapi import GoogleSearch
 
 # 获取全局变量
 if os.getenv("DEPLOY_ON_RAILWAY"):
@@ -18,6 +19,7 @@ if os.getenv("DEPLOY_ON_RAILWAY"):
     OPENAI_CHAT_MODEL = os.getenv("OPENAI_CHAT_MODEL")
     OPENAI_EMBED_MODEL = os.getenv("OPENAI_EMBED_MODEL")
     PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
+    SERP_API_KEY = os.getenv("SERP_API_KEY")
     MONGO_URL = os.getenv("MONGO_URL")
 else:
     # 在本地部署：读取配置文件中的变量
@@ -28,6 +30,7 @@ else:
     OPENAI_CHAT_MODEL = config["OPENAI_CHAT_MODEL"]
     OPENAI_EMBED_MODEL = config["OPENAI_EMBED_MODEL"]
     PINECONE_API_KEY = config["PINECONE_API_KEY"]
+    SERP_API_KEY = config["SERP_API_KEY"]
     MONGO_URL = config['MONGO_URL']
     os.environ['HTTP_PROXY'] = config['HTTP_PROXY']
     os.environ['HTTPS_PROXY'] = config['HTTPS_PROXY']
@@ -37,6 +40,7 @@ print(f'OPENAI_API_KEY={OPENAI_API_KEY}')
 print(f'OPENAI_CHAT_MODEL={OPENAI_CHAT_MODEL}')
 print(f'OPENAI_EMBED_MODEL={OPENAI_EMBED_MODEL}')
 print(f'PINECONE_API_KEY={PINECONE_API_KEY}')
+print(f'SERP_API_KEY={SERP_API_KEY}')
 print(f'MONGO_URL={MONGO_URL}')
 print("================")
 
@@ -64,15 +68,13 @@ pc = KQAPinecone(PINECONE_API_KEY)
 @app.route('/') # 默认methods=['GET']
 def index():
     # state in ['register', 'login', 'prompt', 'chat']
-    # 登录阶段：没有登录，要先登录。
-    state = 'login'
+    state = 'login' # 登录阶段：没有登录，要先登录。
     if ('name' in session) and ('uid' in session) and \
         db.user_exist(name=session['name'], uid=session['uid']):
-        # 提示阶段：已经登录，没有提示。
-        state = 'prompt'
-        if ("prompt" in session) and ("messages" in session):
-            # 交互阶段：已有提示，进入问答。
-            state = 'chat'  
+        state = 'prompt' # 提示阶段：已经登录，没有提示。
+        if ("prompt" in session) and ("messages" in session) \
+                                    and ("contexts" in session):
+            state = 'chat' # 交互阶段：已有提示，进入问答。
     print(f"主页: state={state}")
     return render_template('index.html', state=state)
 
@@ -124,6 +126,7 @@ def login():
         session['prompt'] = user['prompt']
         messages = [{"role": "system", "content": user['prompt']}]
         session['messages'] = messages
+        session['contexts'] = []
     titles = [f['title'] for f in db.find_files_by_user(name)]
     session['titles'] = titles
     print(f"登录: name={name}, uid={session['uid']}")
@@ -141,6 +144,7 @@ def logout():
     #session.pop('uid', None)
     #session.pop('prompt', None)
     #session.pop('messages', None)
+    #session.pop('contexts', None)
     session.clear()
     return redirect(url_for('index'))    
 
@@ -178,13 +182,7 @@ def upload():
         session['titles'] = titles
         # 新增嵌入
         pc.insert(file_id, embeddings)
-    print(f"上传: title={title}")
-    #print(f"paragraphs: len(paragraphs)={len(paragraphs)}")
-    # for i, p in enumerate(paragraphs):
-    #     print(f"[{i}]{p}")
-    #print(f"chunks: len(chunks)={len(chunks)}")
-    # for i, c in enumerate(chunks):
-    #     print(f"[{i}]{c}")
+    print(f"上传: 标题={title} 段数={len(paragraphs)}, 块数={len(chunks)}")
     return redirect(url_for('index'))
 
 def find_encoding(response):
@@ -241,13 +239,7 @@ def crawl():
         session['titles'] = titles
         # 新增嵌入
         pc.insert(file_id, embeddings)
-    print(f"抓取: title={title}, charset={charset}")
-    # print(f"paragraphs: len(paragraphs)={len(paragraphs)}")
-    # for i, p in enumerate(paragraphs):
-    #     print(f"[{i}]{p}")
-    # print(f"chunks: len(chunks)={len(chunks)}")
-    # for i, c in enumerate(chunks):
-    #     print(f"[{i}]{c}")
+    print(f"抓取: 标题={title} 段数={len(paragraphs)}, 块数={len(chunks)}")
     return redirect(url_for('index'))
 
 @app.route('/delete', methods=['POST'])
@@ -269,7 +261,6 @@ def delete():
     pc.delete(file_id=file_id, num_embeddings=num_chunks)
     print(f"删文: title={title}")
     return redirect(url_for('index'))
-
 
 @app.route('/read', methods=['GET'])
 def read():
@@ -296,18 +287,21 @@ def prompt():
             return render_template('index.html', \
                         state='prompt', prompt_msg="提示不能为空")
         messages = [{"role": "system", "content": prompt}]
+        contexts = []
         session['prompt'] = prompt
         session['messages'] = messages
+        session['contexts'] = contexts
         # 保存prompt到数据库中
         db.update_user(name=session['name'], uid=session['uid'], \
                        prompt=session["prompt"])
-        print(f"提示：prompt={prompt}, messages={messages}")
+        print(f"提示：prompt={prompt}, messages={messages}, contexts={contexts}")
         return redirect(url_for('index'))
     elif submit == '重来':
         # 清空问答会话
         print(f"重来: prompt={session.get('prompt')}")
         session.pop('prompt', None)
         session.pop('messages', None)
+        session.pop('contexts', None)
         # 清除数据库中的prompt
         db.update_user(name=session['name'], uid=session['uid'], prompt="")
         return redirect(url_for('index'))
@@ -319,16 +313,18 @@ def chat():
     if submit == '发送':
         # 问答服务
         question = request.form.get('question')
-        if 'messages' not in session:
+        if 'messages' not in session or 'contexts' not in session:
             return redirect(url_for('index'))
         messages = session['messages']
+        contexts = session['contexts']
         question_embedding = model.embed_query(query=question)
         fid_and_cid_list = pc.query(query_embedding=question_embedding)
         file_id, chunk_id = fid_and_cid_list[0]
         file_doc = db.find_file(name=session['name'], file_id=file_id)
         context = file_doc['chunks'][chunk_id]
-        prompt="根据以下内容回答问题：\n内容："+context+"\n问题："+question
-        messages.append({"role":"user", "content":prompt})
+        contexted_question = "根据以下内容回答问题：\n内容：" \
+                                + context + "\n问题：" + question
+        messages.append({"role":"user", "content":contexted_question})
         okey, result = model.qa(messages)
         messages.pop(-1)
         # 回答失败
@@ -341,7 +337,8 @@ def chat():
         messages.append({"role":"user", "content":question})
         messages.append({"role":"assistant", "content":answer})
         session['messages']=messages
-        #session['context']=context
+        contexts.append(context)
+        session['contexts']=contexts
         print(f"问答: question={question}, context={context}, answer={answer}")
         return redirect(url_for('index'))
     elif submit == '删除':
@@ -352,12 +349,14 @@ def chat():
         if ('messages' not in session) or (message_idx % 2 == 0):
             return redirect(url_for('index'))
         messages = session['messages']
-        old_len = len(messages)
+        contexts = session['contexts']
         # 删除message_idx和message_idx之后的所有问答
         messages = messages[:message_idx]
         session['messages'] = messages
-        new_len = len(messages)
-        print(f"删除: len(old_messages)={old_len}, len(new_messages)={new_len}")
+        contexts = contexts[:int((message_idx-1)/2)]
+        session['contexts'] = contexts
+        print(f"删话: len(messages)={len(messages)}, "
+                      + f"len(contexts)={len(contexts)}")
         return redirect(url_for('index'))
     return redirect(url_for('index'))
  

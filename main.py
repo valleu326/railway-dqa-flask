@@ -2,14 +2,10 @@
 # -*- coding: utf-8 -*-
 import os, re, datetime, json
 from flask import Flask, request, redirect, url_for, render_template, session
+from kqa import KQAOpenAI, KQAMongoDB, KQAPinecone, KQAGoogle
 from unstructured.partition.doc import partition_doc
 from unstructured.partition.docx import partition_docx
-import requests
-from requests.utils import get_encoding_from_headers, get_encodings_from_content
-import chardet
-from bs4 import BeautifulSoup
-from kqa import KQAOpenAI, KQAMongoDB, KQAPinecone
-from serpapi import GoogleSearch
+from fproc import crawl_webpage
 
 # 获取全局变量
 if os.getenv("DEPLOY_ON_RAILWAY"):
@@ -56,14 +52,17 @@ app.config['PERMANENT_SESSION_LIFETIME'] = datetime.timedelta(days=1)
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  
 
 # 创建语言模型
-model = KQAOpenAI(OPENAI_API_KEY, \
-        OPENAI_CHAT_MODEL, OPENAI_EMBED_MODEL)
+model = KQAOpenAI(OPENAI_API_KEY, OPENAI_CHAT_MODEL, OPENAI_EMBED_MODEL)
 
 # 创建MongoDB数据库
 db = KQAMongoDB(MONGO_URL)
 
 # 创建Pinecone数据库
 pc = KQAPinecone(PINECONE_API_KEY)
+
+# 创建Google搜索引擎
+se = KQAGoogle(SERP_API_KEY)
+
 
 @app.route('/') # 默认methods=['GET']
 def index():
@@ -185,60 +184,33 @@ def upload():
     print(f"上传: 标题={title} 段数={len(paragraphs)}, 块数={len(chunks)}")
     return redirect(url_for('index'))
 
-def find_encoding(response):
-    encoding = None
-    # Try charset from content-type
-    if response.headers:
-        encoding = get_encoding_from_headers(response.headers)
-        if encoding == 'ISO-8859-1':
-            encoding = None
-    # Try charset from content
-    if not encoding:
-        encoding = get_encodings_from_content(response.content)
-        encoding = encoding and encoding[0] or None
-    # Fallback to auto-detected encoding.
-    if not encoding and chardet is not None:
-        encoding = chardet.detect(response.content)['encoding']
-    if encoding and encoding.lower() == 'gb2312':
-        encoding = 'gb18030'
-    return encoding or 'latin_1'
+
 
 @app.route('/crawl', methods=['POST'])
 def crawl():  
-    # 下载网页
+    # 抓取网页
     url = request.form.get('url')
-    response = requests.get(url=url)
-    # 从网页中提取title和paragraphs
-    #charset = requests.utils.get_encodings_from_content(response.text)[0]
-    charset = find_encoding(response)
-    soup = BeautifulSoup( \
-        response.text.encode(response.encoding).decode(charset), \
-        'html.parser', from_encoding=charset)
-    result = soup.find('h1')
-    if result:
-        title = result.text
-    else:
-        result = soup.find('h2')
-        if result:
-            title = result.text
-        else:
-            title = soup.find('title').text
-    title = title.strip()
-    paragraphs = []
-    for p in soup.find_all('p'):
-        if p.text.strip() != "":
-            paragraphs.append(p.text.strip())
+    okey, data = crawl_webpage(url=url)
+    if not okey:
+        return redirect(url_for('index'))
+    title, paragraphs = data
     # 嵌入文件
     chunks, embeddings = model.embed_document(paragraphs)
+    
     # 新增文件
     file_id = db.insert_file(name=session['name'], title=title, \
                          paragraphs=paragraphs, chunks=chunks)
-    if file_id != None:
-        titles = session['titles']
-        titles.append(title)
-        session['titles'] = titles
-        # 新增嵌入
-        pc.insert(file_id, embeddings)
+    # 新增嵌入
+    file_doc = db.find_file(name=session['name'], title=title)
+    if file_doc:
+        # 这里的file_id非前面的file_id，更新成功返回的file_id为None
+        file_id2 = file_doc['fid'] 
+        pc.insert(file_id2, embeddings)
+    if file_id == None:
+        return redirect(url_for('index'))
+    titles = session['titles']
+    titles.append(title)
+    session['titles'] = titles
     print(f"抓取: 标题={title} 段数={len(paragraphs)}, 块数={len(chunks)}")
     return redirect(url_for('index'))
 
@@ -254,6 +226,8 @@ def delete():
     titles.pop(title_idx)
     session['titles'] = titles
     file_doc = db.find_file(name=session['name'], title=title)
+    if not file_doc:
+        return redirect(url_for('index'))
     file_id = file_doc['fid']
     num_chunks = len(file_doc['chunks'])
     db.delete_file(name=session['name'], title=title)
@@ -317,9 +291,14 @@ def chat():
             return redirect(url_for('index'))
         messages = session['messages']
         contexts = session['contexts']
+        # 在私人文档中检索与question最相关的context
         question_embedding = model.embed_query(query=question)
-        fid_and_cid_list = pc.query(query_embedding=question_embedding)
-        file_id, chunk_id = fid_and_cid_list[0]
+        scores, ids = pc.query(query_embedding=question_embedding)
+        score = scores[0]
+        file_id, chunk_id = ids[0]
+        # 在搜索引擎中搜索与question最相关的context
+        if score < 0.8:
+            pass
         file_doc = db.find_file(name=session['name'], file_id=file_id)
         context = file_doc['chunks'][chunk_id]
         contexted_question = "根据以下内容回答问题：\n内容：" \

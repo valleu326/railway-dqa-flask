@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+# KQA: Knowledge Question Answering
 import re
 import numpy as np
 import pymongo
@@ -8,6 +9,8 @@ from werkzeug.security import generate_password_hash, check_password_hash
 import openai
 import tiktoken
 import pinecone
+from serpapi import GoogleSearch
+import chromadb
 
 # =============================================================================
 # KQA数据库：以MongoDB为基础
@@ -338,29 +341,25 @@ class KQAPinecone(object):
         self.index = pinecone.Index(index_name=self.index_name)
         
     @staticmethod
-    def fid2eid(file_id, idx):
-        return file_id + ":" + str(idx)
+    def fid2eid(file_id, chunk_id):
+        return file_id + ":" + str(chunk_id)
     
     @staticmethod
     def eid2fid(embed_id):
-        file_id, idx = embed_id.rsplit(':', 1)
-        idx = int(idx)
-        return (file_id, idx)
+        file_id, chunk_id = embed_id.rsplit(':', 1)
+        chunk_id = int(chunk_id)
+        return (file_id, chunk_id)
         
     def insert(self, file_id="", embeddings=[]):
         if not file_id or not embeddings:
             return
         vectors = []
-        for idx in range(len(embeddings)):
-            embed_id = self.fid2eid(file_id, idx)
-            vectors.append((embed_id, embeddings[idx]))
+        for chunk_id in range(len(embeddings)):
+            embed_id = self.fid2eid(file_id, chunk_id)
+            vectors.append((embed_id, embeddings[chunk_id]))
         # 没有指定namespace会使用默认的namespace
         response = self.index.upsert(vectors=vectors)
-        print(f"type(response)={type(response)}")
-        print(f"reponse={response}")
-        if hasattr(response, 'upsertedCount'):
-            print(f"response.upsertedCount={response.upsertedCount}")
-        return response.upsertedCount # response.upserted_count
+        return response.upserted_count
     
     def query(self, query_embedding, top_k=1):
         # 没有指定namespace会使用默认的namespace
@@ -370,22 +369,52 @@ class KQAPinecone(object):
         embed_ids = [match.id for match in result.matches]
         scores = [match.score for match in result.matches]
         print(f"scores: {scores}")
-        fid_and_cid_list = [self.eid2fid(embed_ids[i]) \
+        ids = [self.eid2fid(embed_ids[i]) \
                                      for i in range(len(embed_ids)) ]
-        return fid_and_cid_list
+        return (scores, ids)
         
     def delete(self, file_id="", num_embeddings=0):
         if not file_id or not num_embeddings:
             return
         ids = []
-        for idx in range(num_embeddings):
-            embed_id = self.fid2eid(file_id, idx)
+        for chunk_id in range(num_embeddings):
+            embed_id = self.fid2eid(file_id, chunk_id)
             ids.append(embed_id)
         # 没有指定namespace会使用默认的namespace
         self.index.delete(ids=ids)
         return 
     
         
+class KQAGoogle(object):
+    def __init__(self, serp_api_key):
+        # 获得Serpapi的API KEY
+        self.serp_api_key = serp_api_key
+        
+    def search(self, query):
+        results = GoogleSearch({
+                'engine': 'google',
+                'q': query,
+                'api_key': self.serp_api_key,
+                'google_domain': "google.com.hk",
+                'hl': 'zh-CN',
+                'gl': 'cn',
+                'start': 0,
+                'num': 10,
+                'output': 'json'
+            }).get_dict()
+        if results["search_metadata"]['status'] == 'Error':
+            return None
+        # results["search_metadata"]['status'] == 'Success'
+        webpages = []
+        for item in results['organic_results']:
+            webpages.append({'title': item['title'], 'link': item['link']})
+        return webpages
+    
+    def query(self, query):
+        webpages = self.search(query)
+        if not webpages:
+            # 稍后再写
+            return 
         
         
         

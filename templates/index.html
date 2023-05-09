@@ -2,6 +2,8 @@
 <html>
 <head>
     <meta charset="utf-8" />
+    <link rel="icon" href="{{url_for('static', filename='bulb.png')}}" 
+                                                    type="image/x-icon">
     <title>知识问答AI</title>
     <style>
     .textbox {
@@ -34,7 +36,6 @@
             var contexts = 
                 document.getElementsByClassName('context');
             var context = contexts[idx];
-            
             if (context.style.display == "none") {
                 context.style.display = "block";
                 button.innerHTML = "<<<折叠";
@@ -100,13 +101,16 @@
 {# 正文区域：左边为上传部分，右边为提示部分和问答部分。 #}
 {% if state and state in ['prompt', 'chat'] %}
     <div align="center">
+    {% if file_msg %} 
+        <span style="color:red;">{{file_msg}}</span><br/>
+    {% endif %}
     <table border="0" width="600">
     <tr >
     <td valign="top" class="blockbox" width="200">
     {# 文档部分 #}
     {# 提交文件 #}
     <div align="center" >
-    <form action="{{url_for('upload')}}" method="post" enctype=
+    <form action="{{url_for('fetch')}}" method="post" enctype=
         "multipart/form-data" style="width:180px;" ><br/>
         <input type="file" name="file" class="short_text" 
                                     accept=".txt,.doc,.docx"/>
@@ -116,9 +120,9 @@
     </div>
     {# 抓取网页 #}
     <div align="center">
-    <form action="{{url_for('crawl')}}" method="post" enctype=
+    <form action="{{url_for('fetch')}}" method="post" enctype=
         "multipart/form-data" style="width:180px;" >
-        <input type="text" name="url" required size="18" />
+        <input type="text" name="url" required size="16" />
         <input type="submit" name="submit" value="抓取网页" /><br/>
     </form>
     <hr width="180" />
@@ -133,15 +137,12 @@
             {% if title|length <= 20 %}
             <label class="short_text">
                 <a href="{{url_for('read', title_idx=loop.index0)}}" 
-                                                        target="_blank">
-                    {{title}}
-                </a>
+                target="_blank">{{title}}</a>
             </label><br>
             {% else %}
             <label class="short_text">
-                <a href="{{url_for('read', title_idx=loop.index0)}}">
-                    {{title[:20]}}...
-                </a>
+                <a href="{{url_for('read', title_idx=loop.index0)}}" 
+                target="_blank">{{title[:20]}}...</a>
             </label><br>
             {% endif %}
             <input type="hidden" name="title_idx" 
@@ -160,7 +161,7 @@
             <span style="display:block;float:left;margin-left:30px;">
             <label>提示：</label>
             </span><br/>
-            <textarea  name="prompt" cols="40" rows="6"></textarea><br/><br/>
+            <textarea  name="prompt" cols="40" rows="6"></textarea><br/>
             <input type="submit" name="submit" value="提交" /><br/><br/>
             {% if prompt_msg %} 
                 <span style="color:red;">{{prompt_msg}}</span><br/><br/> 
@@ -203,7 +204,7 @@
                             节选{{"%d"|format((loop.index0+1)/2)}}：
                             {# ci为context indxe #}
                             {% set ci = ((loop.index0-1)/2)|int %}
-                            <a href="javascript:on_click({{ci}});"
+                            <a href="javascript:;" onclick="on_click({{ci}})"
                                                  class="button">>>>展开</a>
                         </td>
                     </tr>
@@ -235,14 +236,18 @@
             <div align="center">
             <form method="post" action="{{url_for('chat')}}" 
                     class="blockbox" style="width:400px;"><br/>
-                <span style="display:block;float:left;margin-left:30px;">
-                <label>发问：</label>
-                </span><br/>
-                <textarea name="question" cols="40" rows="6"></textarea><br/>
+                <table>
+                <tr><td><label>发问：</label></td></tr>
+                <tr><td>
+                <textarea name="question" cols="36" rows="6"></textarea><br/>
+                </td></tr>
+                <tr><td align="center">
                 <input type="submit" name="submit" value="发送" /> <br/><br/>
                 {% if chat_msg %} 
                     <span style="color:red;">{{chat_msg}}</span><br/><br/> 
-                {% endif %} 
+                {% endif %}
+                </td></tr>
+                </table> 
             </form>
             </div>
         {% endif %}

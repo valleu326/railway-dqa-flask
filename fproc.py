@@ -34,7 +34,7 @@ def crawl_webpage(url):
     response = requests.get(url=url)
     if response.status_code != 200:
         print(f"requests错误: status_code={response.status_code}")
-        return (False, None)
+        return (False, "抓取网页失败")
     # 从网页中提取title和paragraphs
     #charset = requests.utils.get_encodings_from_content(response.text)[0]
     charset = find_encoding(response)
@@ -46,7 +46,7 @@ def crawl_webpage(url):
                              'html.parser', from_encoding=charset)
     except UnicodeDecodeError as err:
         print(f"requests错误: error={err}")
-        return (False, None)
+        return (False, "网页解码错误")
     result = soup.find('h1')
     if result:
         title = result.text

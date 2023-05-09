@@ -63,17 +63,23 @@ pc = KQAPinecone(PINECONE_API_KEY)
 # 创建Google搜索引擎
 se = KQAGoogle(SERP_API_KEY)
 
+def get_current_state():
+    # state in ['register', 'login', 'prompt', 'chat']
+    # 登录阶段：没有登录，要先登录。
+    state = 'login' 
+    if ('name' in session) and ('uid' in session) and \
+        db.user_exist(name=session['name'], uid=session['uid']):
+        # 提示阶段：已经登录，没有提示。
+        state = 'prompt' 
+        if ("prompt" in session) and ("messages" in session) \
+                                    and ("contexts" in session):
+            # 交互阶段：已有提示，进入问答。
+            state = 'chat' 
+    return state
 
 @app.route('/') # 默认methods=['GET']
 def index():
-    # state in ['register', 'login', 'prompt', 'chat']
-    state = 'login' # 登录阶段：没有登录，要先登录。
-    if ('name' in session) and ('uid' in session) and \
-        db.user_exist(name=session['name'], uid=session['uid']):
-        state = 'prompt' # 提示阶段：已经登录，没有提示。
-        if ("prompt" in session) and ("messages" in session) \
-                                    and ("contexts" in session):
-            state = 'chat' # 交互阶段：已有提示，进入问答。
+    state = get_current_state()
     print(f"主页: state={state}")
     return render_template('index.html', state=state)
 
@@ -147,71 +153,71 @@ def logout():
     session.clear()
     return redirect(url_for('index'))    
 
-@app.route('/upload', methods=['POST'])
-def upload():
-    if 'file' not in request.files:
-        return redirect(url_for('index'))
-    # 从文件中提取title和paragraphs
-    file = request.files['file']
-    filename, filetype = os.path.splitext(file.filename)
-    title = filename.strip()
-    filetype = filetype.lower()
-    if filetype not in ['.txt', '.doc', '.docx']:
-        # 永不进入：form要求是3种文件类型中的一种。
-        return redirect(url_for('index')) 
-    filepath = "./tmp" # 保存到临时文件中
-    file.save(filepath)
-    if filetype == '.txt':
-        with open(filepath, "r") as f:
-            paragraphs = f.readlines()
-    elif filetype == '.doc':
-        paragraphs = partition_doc(filename=filepath)
-    elif filetype == '.docx':
-        paragraphs = partition_docx(filename=filepath)
-    paragraphs = [str(p).strip() for p in paragraphs \
-                                  if str(p).strip() != ""]
-    # 嵌入文件
-    chunks, embeddings = model.embed_document(paragraphs)
-    # 新增文件
-    file_id = db.insert_file(name=session['name'], title=title, \
-                         paragraphs=paragraphs, chunks=chunks)
-    if file_id != None:
-        titles = session['titles']
-        titles.append(title)
-        session['titles'] = titles
-        # 新增嵌入
-        pc.insert(file_id, embeddings)
-    print(f"上传: 标题={title} 段数={len(paragraphs)}, 块数={len(chunks)}")
-    return redirect(url_for('index'))
-
-
-
-@app.route('/crawl', methods=['POST'])
-def crawl():  
-    # 抓取网页
-    url = request.form.get('url')
-    okey, data = crawl_webpage(url=url)
-    if not okey:
-        return redirect(url_for('index'))
-    title, paragraphs = data
-    # 嵌入文件
-    chunks, embeddings = model.embed_document(paragraphs)
-    
-    # 新增文件
-    file_id = db.insert_file(name=session['name'], title=title, \
-                         paragraphs=paragraphs, chunks=chunks)
-    # 新增嵌入
-    file_doc = db.find_file(name=session['name'], title=title)
-    if file_doc:
-        # 这里的file_id非前面的file_id，更新成功返回的file_id为None
-        file_id2 = file_doc['fid'] 
-        pc.insert(file_id2, embeddings)
-    if file_id == None:
+@app.route('/fetch', methods=['POST'])
+def fetch():
+    submit = request.form.get('submit')
+    if submit == '上传文件':
+        if 'file' not in request.files:
+            return redirect(url_for('index'))
+        # 从文件中提取title和paragraphs
+        file = request.files['file']
+        filename, filetype = os.path.splitext(file.filename)
+        title = filename.strip()
+        filetype = filetype.lower()
+        if filetype not in ['.txt', '.doc', '.docx']:
+            # 永不进入： form要求是3种文件类型中的一种。
+            return redirect(url_for('index')) 
+        filepath = "./tmp" # 保存到临时文件中
+        file.save(filepath)
+        if filetype == '.txt':
+            with open(filepath, "r") as f:
+                paragraphs = f.readlines()
+        elif filetype == '.doc':
+            paragraphs = partition_doc(filename=filepath)
+        elif filetype == '.docx':
+            paragraphs = partition_docx(filename=filepath)
+        paragraphs = [str(p).strip() for p in paragraphs \
+                                      if str(p).strip() != ""]
+    elif submit == '抓取网页':        
+        # 抓取网页：获取title和paragraphs
+        url = request.form.get('url')
+        okey, data = crawl_webpage(url=url)
+        if not okey:
+            file_msg = data
+            state = get_current_state()
+            return render_template('index.html', state=state, \
+                                               file_msg=file_msg)
+        title, paragraphs = data
+    else:    # 永不进入
         return redirect(url_for('index'))
     titles = session['titles']
+    # 如果已有同名文件，需要先删除文件和嵌入。
+    if title in titles:
+        file_doc = db.find_file(name=session['name'], title=title)
+        if file_doc: # file_doc等价于title in titles
+            file_id = file_doc['fid']
+            num_chunks = len(file_doc['chunks'])
+            # 删除文件
+            db.delete_file(name=session['name'], title=title)
+            # 删除嵌入
+            pc.delete(file_id=file_id, num_embeddings=num_chunks)
+            # 删除标题
+            titles.pop(titles.index(title))
+    # 嵌入文件
+    chunks, embeddings = model.embed_document(paragraphs)
+    # 新增文件
+    file_id = db.insert_file(name=session['name'], title=title, \
+                         paragraphs=paragraphs, chunks=chunks)
+    if file_id == None:
+        state = get_current_state()
+        return render_template('index.html', \
+                state=state, file_msg="插入文件失败")
+    # 新增嵌入
+    pc.insert(file_id, embeddings)
+    # 更新会话
     titles.append(title)
     session['titles'] = titles
-    print(f"抓取: 标题={title} 段数={len(paragraphs)}, 块数={len(chunks)}")
+    print(f"拿来: 标题={title} 段数={len(paragraphs)}, 块数={len(chunks)}")
     return redirect(url_for('index'))
 
 @app.route('/delete', methods=['POST'])
@@ -220,19 +226,21 @@ def delete():
     title_idx = int(title_idx)
     if 'titles' not in session or 'name' not in session:
         return redirect(url_for('index'))
-    # 删除文件
+    # 删除文件和嵌入
     title = session['titles'][title_idx]
-    titles = session['titles']
-    titles.pop(title_idx)
-    session['titles'] = titles
     file_doc = db.find_file(name=session['name'], title=title)
     if not file_doc:
         return redirect(url_for('index'))
     file_id = file_doc['fid']
     num_chunks = len(file_doc['chunks'])
+    # 删除文件
     db.delete_file(name=session['name'], title=title)
     # 删除嵌入
     pc.delete(file_id=file_id, num_embeddings=num_chunks)
+    # 更新会话
+    titles = session['titles']
+    titles.pop(title_idx)
+    session['titles'] = titles
     print(f"删文: title={title}")
     return redirect(url_for('index'))
 

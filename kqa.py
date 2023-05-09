@@ -92,18 +92,29 @@ class KQAMongoDB(object):
     def insert_file(self, name="", title="", paragraphs=[], chunks=[]):
         if not name or not title or not paragraphs or not chunks:
             return None
-        # 已经存在就更新paragraphs
+        # 已经存在就先删掉
         if self.file_exist(name, title):
-            query = {'name':name, 'title':title}
-            update = {"$set": {'paragraphs':paragraphs, 'chunks':chunks}}
-            self.file_col.update_one(query, update)
-            return None
-        # 不存在才新增doc
+            self.delete_file(name=name, title=title)
+        # 新增文件记录
         doc = {'name':name, 'title':title, \
                'paragraphs':paragraphs, 'chunks':chunks}
         res = self.file_col.insert_one(doc)
         file_id = str(res.inserted_id)
         return file_id
+    
+    def update_file(self, name="", title="", paragraphs=[], chunks=[]):
+        if not name or not title or not paragraphs or not chunks:
+            return None
+        # 先保证已经存在
+        if not self.file_exist(name, title):
+            return None
+        # 再更新文件记录
+        query = {'name':name, 'title':title}
+        update = {"$set": {'paragraphs':paragraphs, 'chunks':chunks}}
+        res = self.file_col.update_one(query, update)
+        #匹配query的就只有一个：res.matched_count == 1
+        #res.modified_count为1表示paragraphs已修改，为0表示内容没修改。
+        return res.modified_count
     
     def find_files_by_user(self, name=""):
         if not name:

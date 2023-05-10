@@ -6,17 +6,20 @@
                                                     type="image/x-icon">
     <title>知识问答AI</title>
     <style>
+    .blockbox {
+        background:#f3f3f3;
+    }
+    textarea {
+        background:#d0e8ff;
+        height:100px;
+        width:360px; 
+        resize:none;
+    }
     .textbox {
         padding:4px;
         border-style:solid;
         border-width:1px;
         background:#d0e8ff
-    }
-    textarea {
-        background:#d0e8ff
-    }
-    .blockbox {
-        background:#f3f3f3;
     }
     .short_text {
         width:95%;
@@ -101,9 +104,6 @@
 {# 正文区域：左边为上传部分，右边为提示部分和问答部分。 #}
 {% if state and state in ['prompt', 'chat'] %}
     <div align="center">
-    {% if file_msg %} 
-        <span style="color:red;">{{file_msg}}</span><br/>
-    {% endif %}
     <table border="0" width="600">
     <tr >
     <td valign="top" class="blockbox" width="200">
@@ -122,9 +122,12 @@
     <div align="center">
     <form action="{{url_for('fetch')}}" method="post" enctype=
         "multipart/form-data" style="width:180px;" >
-        <input type="text" name="url" required size="16" />
+        <input type="text" name="url" required style="width:160px;" />
         <input type="submit" name="submit" value="抓取网页" /><br/>
     </form>
+    {% if file_msg %} 
+        <span style="color:red;">{{file_msg}}</span><br/>
+    {% endif %}
     <hr width="180" />
     </div>
     {# 标题列表 #}
@@ -158,10 +161,18 @@
     <form action="{{url_for('prompt')}}" method="post"  
                             class="blockbox" style="width:400px;" ><br/>
         {% if state == 'prompt' %} {# 提示阶段 #}
-            <span style="display:block;float:left;margin-left:30px;">
-            <label>提示：</label>
-            </span><br/>
-            <textarea  name="prompt" cols="40" rows="6"></textarea><br/>
+            <table border="0" width="360">
+                <tr>
+                    <td>
+                        <label>提示：</label>
+                    </td>
+                </tr>
+                <tr>
+                    <td>
+                        <textarea name="prompt"></textarea>
+                    </td>
+                </tr>
+            </table>
             <input type="submit" name="submit" value="提交" /><br/><br/>
             {% if prompt_msg %} 
                 <span style="color:red;">{{prompt_msg}}</span><br/><br/> 
@@ -204,13 +215,14 @@
                             节选{{"%d"|format((loop.index0+1)/2)}}：
                             {# ci为context indxe #}
                             {% set ci = ((loop.index0-1)/2)|int %}
+    得分 = {{"%0.2f"|format(session.get('contexts')[ci]['score'])}}&nbsp;&nbsp;
                             <a href="javascript:;" onclick="on_click({{ci}})"
                                                  class="button">>>>展开</a>
                         </td>
                     </tr>
                     <tr class="context" style="display:none">
                         <td class="textbox">
-                            {{session.get('contexts')[ci]|safe}}
+                            {{session.get('contexts')[ci]['context']|safe}}
                         </td>
                     </tr>
             {% endif %}
@@ -236,18 +248,22 @@
             <div align="center">
             <form method="post" action="{{url_for('chat')}}" 
                     class="blockbox" style="width:400px;"><br/>
-                <table>
-                <tr><td><label>发问：</label></td></tr>
-                <tr><td>
-                <textarea name="question" cols="36" rows="6"></textarea><br/>
-                </td></tr>
-                <tr><td align="center">
-                <input type="submit" name="submit" value="发送" /> <br/><br/>
+                <table border="0" width="360">
+                    <tr>
+                        <td>
+                            <label>发问：</label>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <textarea name="question"></textarea>
+                        </td>
+                    </tr>
+                </table>
+                <input type="submit" name="submit" value="发送" /><br/><br/>
                 {% if chat_msg %} 
-                    <span style="color:red;">{{chat_msg}}</span><br/><br/> 
+                <span style="color:red;">{{chat_msg}}</span><br/><br/> 
                 {% endif %}
-                </td></tr>
-                </table> 
             </form>
             </div>
         {% endif %}

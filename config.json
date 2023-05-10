@@ -4,7 +4,7 @@
 "OPENAI_CHAT_MODEL":"gpt-3.5-turbo",
 "OPENAI_EMBED_MODEL":"text-embedding-ada-002",
 "PINECONE_API_KEY":"xxx",
-"HTTP_PROXY":"socks5://127.0.0.1:7890",
-"HTTPS_PROXY":"socks5://127.0.0.1:7890",
+"HTTP_PROXY":"http://127.0.0.1:7890",
+"HTTPS_PROXY":"http://127.0.0.1:7890",
 "MONGO_URL":"mongodb://localhost:27017"
 }

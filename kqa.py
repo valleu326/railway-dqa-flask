@@ -11,13 +11,10 @@ import tiktoken
 import pinecone
 from serpapi import GoogleSearch
 import chromadb
+from chromadb.utils import embedding_functions
 
-# =============================================================================
-# KQA数据库：以MongoDB为基础
-#  - users集合：存储每个用户的个人信息
-#  - files集合：存储每个文件的文本信息
-# =============================================================================
-class KQAMongoDB(object):
+
+class MongoDB(object):
     def __init__(self, mongo_url):
         # 获得MongoDB客户端
         self.mongo_cli = pymongo.MongoClient(mongo_url)
@@ -29,8 +26,8 @@ class KQAMongoDB(object):
         self.file_col = self.mongo_db['files']
         
     """
-    users集合的文档: 
-    _id域，name域, pwd_hash域，prompt域
+    users集合：存储每个用户的个人信息 
+    user文档：_id域，name域, pwd_hash域，prompt域
     """
     def insert_user(self, name="", pwd="", prompt=""):
         # 先保证名称没注册过
@@ -86,8 +83,8 @@ class KQAMongoDB(object):
         return 
     
     """
-    files集合的文档: 
-    _id域，name域, title域，paragraphs域
+    files集合：存储每个文件的文本信息 
+    file文档：_id域，name域, title域，paragraphs域
     """
     def insert_file(self, name="", title="", paragraphs=[], chunks=[]):
         if not name or not title or not paragraphs or not chunks:
@@ -150,12 +147,7 @@ class KQAMongoDB(object):
         return
 
 
-# =============================================================================
-# KQA模型：以OpenAI模型为基础
-#   - chat模型：以交谈方式回复用户问题
-#   - embedding模型：对每个文件的文本信息进行嵌入
-# =============================================================================
-class KQAOpenAI(object):
+class OpenAI(object):
     MIN_TOKENS = 256     # 每个chunk的最小token数
     MIDDLE_TOKENS = 384  # 每个chunk的期望token数
     MAX_TOKENS = 512     # 每个chunk的最大token数
@@ -175,7 +167,7 @@ class KQAOpenAI(object):
     """
     chat模型：OpenAI的chatgpt或gpt4
     """
-    def qa(self, messages):
+    def answer_question(self, messages):
         err_msg = ""
         try:
             #Make your OpenAI API request here
@@ -232,6 +224,8 @@ class KQAOpenAI(object):
                 paragraph_chunks = self.split_paragraph(paragraph)
                 chunks.extend(paragraph_chunks)
         new_chunks = self.merge_chunks(chunks)
+        if len(new_chunks) == 0:
+            return ([], [])
         result = openai.Embedding.create(input=new_chunks, \
                                          model=self.embed_model)
         embeddings = [item['embedding'] for item in result['data']]
@@ -239,6 +233,8 @@ class KQAOpenAI(object):
         
     # 合并区块：有重叠部分
     def merge_chunks(self, chunks):
+        if len(chunks) == 0:
+            return []
         # 尽量让每个chunk的token数接近并<= MIDDEL_TOKENS
         new_chunks = []
         chunk = chunks[0]
@@ -334,15 +330,11 @@ class KQAOpenAI(object):
         
         # len(sentences) > num_chunks
         # 合并句子为区块：sentences -> chunks
-        print("sentecese: len=", len(sentences))
         chunks = self.merge_sentences(sentences, num_chunks)
         return chunks
         
-# =============================================================================
-# KQA向量数据库：以Pinecone为基础
-#   - kqa索引：存储每个chunk的嵌入表示
-# =============================================================================
-class KQAPinecone(object):
+
+class Pinecone(object):
     def __init__(self, pinecone_api_key):
         pinecone.init(api_key=pinecone_api_key, environment="us-west1-gcp-free")
         self.index_name = 'kqa'
@@ -361,50 +353,49 @@ class KQAPinecone(object):
         chunk_id = int(chunk_id)
         return (file_id, chunk_id)
         
-    def insert(self, file_id="", embeddings=[]):
-        if not file_id or not embeddings:
+    def insert(self, file_id="", embeddings=[], namespace=''):
+        if not file_id or not embeddings or not namespace:
             return
         vectors = []
         for chunk_id in range(len(embeddings)):
             embed_id = self.fid2eid(file_id, chunk_id)
             vectors.append((embed_id, embeddings[chunk_id]))
-        # 没有指定namespace会使用默认的namespace
-        response = self.index.upsert(vectors=vectors)
+        response = self.index.upsert(vectors=vectors, namespace=namespace)
         return response.upserted_count
     
-    def query(self, query_embedding, top_k=1):
-        # 没有指定namespace会使用默认的namespace
-        result = self.index.query(vector=query_embedding, top_k=top_k)
+    def query(self, query_embedding, namespace='', top_k=1):
+        if not namespace:
+            return None
+        result = self.index.query(vector=query_embedding, \
+                            namespace=namespace, top_k=top_k)
         if not result.matches:
             return None
         embed_ids = [match.id for match in result.matches]
         scores = [match.score for match in result.matches]
-        print(f"scores: {scores}")
         ids = [self.eid2fid(embed_ids[i]) \
                                      for i in range(len(embed_ids)) ]
         return (scores, ids)
         
-    def delete(self, file_id="", num_embeddings=0):
-        if not file_id or not num_embeddings:
+    def delete(self, file_id="", num_embeddings=0, namespace=''):
+        if not file_id or not num_embeddings or not namespace:
             return
         ids = []
         for chunk_id in range(num_embeddings):
             embed_id = self.fid2eid(file_id, chunk_id)
             ids.append(embed_id)
-        # 没有指定namespace会使用默认的namespace
-        self.index.delete(ids=ids)
+        self.index.delete(ids=ids, namespace=namespace)
         return 
     
         
-class KQAGoogle(object):
+class Google(object):
     def __init__(self, serp_api_key):
         # 获得Serpapi的API KEY
         self.serp_api_key = serp_api_key
         
     def search(self, query):
         results = GoogleSearch({
+                'q': query,    
                 'engine': 'google',
-                'q': query,
                 'api_key': self.serp_api_key,
                 'google_domain': "google.com.hk",
                 'hl': 'zh-CN',
@@ -421,19 +412,49 @@ class KQAGoogle(object):
             webpages.append({'title': item['title'], 'link': item['link']})
         return webpages
     
-    def query(self, query):
-        webpages = self.search(query)
-        if not webpages:
-            # 稍后再写
+        
+class Chroma(object):
+    def __init__(self, openai_api_key, openai_embed_model):
+        self.client = chromadb.Client()
+        # chromadb内置的OpenAI Embedding Function：之后不用的
+        openai = embedding_functions.OpenAIEmbeddingFunction(\
+            api_key=openai_api_key, model_name=openai_embed_model)
+        # 创建集合
+        #self.collection = self.client.create_collection(name='kqa')
+        self.collection = self.client.get_or_create_collection(name='kqa', \
+                                embedding_function=openai)
+        
+    def insert(self, chunks=[], embeddings=[], title='', link=''):
+        if not chunks or not embeddings or not title or not link:
             return 
+        # 获取集合的文档数 
+        num = self.collection.count()
+        ids = [str(num+i) for i in range(len(chunks))]
+        metadatas = [{'title':title, 'link':link} for i in range(len(chunks))]
+        # 传入embeddings参数：不会调用chromadb内置的embedding function
+        self.collection.add(ids=ids, documents=chunks, \
+                    embeddings=embeddings, metadatas=metadatas)
         
+    def query(self, query_embedding, n_results=1):
+        try:
+            results = self.collection.query([query_embedding], \
+                include=['documents', 'embeddings', 'metadatas', 'distances'])
+        except chromadb.errors.NotEnoughElementsException as err:
+            print(err)
+            return None
+        # results有'documents','embeddings','metadatas','distances'四个属性
+        return results
+            
+    def clear(self):
+        # 获取集合的文档数 
+        num = self.collection.count()
+        ids = [str(i) for i in range(num)]
+        self.collection.delete(ids=ids)
         
-        
-        
-        
-        
-        
-        
+    def __del__(self):
+        # 执行del obj(或者程序结束)会触发__del__析构函数
+        # 删除集合
+        self.client.delete_collection(name='kqa')
         
         
         

@@ -31,7 +31,17 @@ def find_encoding(response):
 
 def crawl_webpage(url):
     # 下载网页
-    response = requests.get(url=url)
+    try:
+        response = requests.get(url=url, timeout=10)
+    except requests.exceptions.ConnectTimeout as err:
+        print(err)
+        return (False, "连接网页超时")
+    except requests.exceptions.ReadTimeout as err:
+        print(err)
+        return (False, "读取网页超时")
+    except requests.exceptions.RequestException as err:
+        print(err)
+        return (False, "访问网页失败")
     if response.status_code != 200:
         print(f"requests错误: status_code={response.status_code}")
         return (False, "抓取网页失败")
@@ -55,7 +65,11 @@ def crawl_webpage(url):
         if result:
             title = result.text
         else:
-            title = soup.find('title').text
+            res = soup.find('title')
+            if res:
+                title = res.text
+            else:
+                return (False, "网页没有标题")
     title = title.strip()
     paragraphs = []
     for p in soup.find_all('p'):

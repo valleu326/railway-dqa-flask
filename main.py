@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 import os, re, datetime, json
+import numpy as np
 from flask import Flask, request, redirect, url_for, render_template, session
-from kqa import KQAOpenAI, KQAMongoDB, KQAPinecone, KQAGoogle
+import kqa
 from unstructured.partition.doc import partition_doc
 from unstructured.partition.docx import partition_docx
 from fproc import crawl_webpage
@@ -51,24 +52,24 @@ app.config['PERMANENT_SESSION_LIFETIME'] = datetime.timedelta(days=1)
 # 限制上传文件不超过16MB
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  
 
-# 创建语言模型
-model = KQAOpenAI(OPENAI_API_KEY, OPENAI_CHAT_MODEL, OPENAI_EMBED_MODEL)
-
+# 创建OpenAI模型：chat模型和embedding模型
+openai = kqa.OpenAI(OPENAI_API_KEY, OPENAI_CHAT_MODEL, OPENAI_EMBED_MODEL)
 # 创建MongoDB数据库
-db = KQAMongoDB(MONGO_URL)
-
-# 创建Pinecone数据库
-pc = KQAPinecone(PINECONE_API_KEY)
-
+mongo = kqa.MongoDB(MONGO_URL)
+# 创建Pinecone向量数据库
+pinecone = kqa.Pinecone(PINECONE_API_KEY)
 # 创建Google搜索引擎
-se = KQAGoogle(SERP_API_KEY)
+google = kqa.Google(SERP_API_KEY)
+# 创建Chroma向量数据库
+chroma = kqa.Chroma(OPENAI_API_KEY, OPENAI_EMBED_MODEL)
 
-def get_current_state():
-    # state in ['register', 'login', 'prompt', 'chat']
+# 获取当前会话的状态
+# state in ['register', 'login', 'prompt', 'chat']
+def get_current_state():    
     # 登录阶段：没有登录，要先登录。
     state = 'login' 
     if ('name' in session) and ('uid' in session) and \
-        db.user_exist(name=session['name'], uid=session['uid']):
+        mongo.user_exist(name=session['name'], uid=session['uid']):
         # 提示阶段：已经登录，没有提示。
         state = 'prompt' 
         if ("prompt" in session) and ("messages" in session) \
@@ -101,7 +102,7 @@ def register():
         return render_template('index.html', \
                     state='register', auth_msg="名称错误")       
     # 新增用户
-    uid = db.insert_user(name=name, pwd=pwd) 
+    uid = mongo.insert_user(name=name, pwd=pwd) 
     if not uid:
         return render_template('index.html', \
                     state='register', auth_msg="账号存在") 
@@ -120,11 +121,11 @@ def login():
         return render_template('index.html', \
                     state='login', auth_msg="输入错误")
     # 查询记录
-    if not db.validate_user(name, pwd):
+    if not mongo.validate_user(name, pwd):
         return render_template('index.html', \
                     state='login', auth_msg="登录失败")
     # 写入会话：相当于登录成功。
-    user = db.find_user(name)
+    user = mongo.find_user(name)
     session['name'] = user['name']
     session['uid'] = user['uid']
     if 'prompt' in user and user['prompt'] != "":
@@ -132,7 +133,7 @@ def login():
         messages = [{"role": "system", "content": user['prompt']}]
         session['messages'] = messages
         session['contexts'] = []
-    titles = [f['title'] for f in db.find_files_by_user(name)]
+    titles = [f['title'] for f in mongo.find_files_by_user(name)]
     session['titles'] = titles
     print(f"登录: name={name}, uid={session['uid']}")
     return redirect(url_for('index'))
@@ -165,7 +166,7 @@ def fetch():
         title = filename.strip()
         filetype = filetype.lower()
         if filetype not in ['.txt', '.doc', '.docx']:
-            # 永不进入： form要求是3种文件类型中的一种。
+            # 永不进入：form要求是3种文件类型中的一种。
             return redirect(url_for('index')) 
         filepath = "./tmp" # 保存到临时文件中
         file.save(filepath)
@@ -193,27 +194,28 @@ def fetch():
     titles = session['titles']
     # 如果已有同名文件，需要先删除文件和嵌入。
     if title in titles:
-        file_doc = db.find_file(name=session['name'], title=title)
+        file_doc = mongo.find_file(name=session['name'], title=title)
         if file_doc: # file_doc等价于title in titles
             file_id = file_doc['fid']
             num_chunks = len(file_doc['chunks'])
             # 删除文件
-            db.delete_file(name=session['name'], title=title)
+            mongo.delete_file(name=session['name'], title=title)
             # 删除嵌入
-            pc.delete(file_id=file_id, num_embeddings=num_chunks)
+            pinecone.delete(file_id=file_id, num_embeddings=num_chunks, 
+                            namespace=session['name'])
             # 删除标题
             titles.pop(titles.index(title))
     # 嵌入文件
-    chunks, embeddings = model.embed_document(paragraphs)
+    chunks, embeddings = openai.embed_document(paragraphs)
     # 新增文件
-    file_id = db.insert_file(name=session['name'], title=title, \
+    file_id = mongo.insert_file(name=session['name'], title=title, \
                          paragraphs=paragraphs, chunks=chunks)
     if file_id == None:
         state = get_current_state()
         return render_template('index.html', \
                 state=state, file_msg="插入文件失败")
     # 新增嵌入
-    pc.insert(file_id, embeddings)
+    pinecone.insert(file_id, embeddings, namespace=session['name'])
     # 更新会话
     titles.append(title)
     session['titles'] = titles
@@ -228,15 +230,16 @@ def delete():
         return redirect(url_for('index'))
     # 删除文件和嵌入
     title = session['titles'][title_idx]
-    file_doc = db.find_file(name=session['name'], title=title)
+    file_doc = mongo.find_file(name=session['name'], title=title)
     if not file_doc:
         return redirect(url_for('index'))
     file_id = file_doc['fid']
     num_chunks = len(file_doc['chunks'])
     # 删除文件
-    db.delete_file(name=session['name'], title=title)
+    mongo.delete_file(name=session['name'], title=title)
     # 删除嵌入
-    pc.delete(file_id=file_id, num_embeddings=num_chunks)
+    pinecone.delete(file_id=file_id, num_embeddings=num_chunks, \
+                    namespace=session['name'])
     # 更新会话
     titles = session['titles']
     titles.pop(title_idx)
@@ -252,7 +255,7 @@ def read():
         return redirect(url_for('index'))
     # 删除文件
     title = session['titles'][title_idx]
-    file_doc = db.find_file(name=session['name'], title=title)
+    file_doc = mongo.find_file(name=session['name'], title=title)
     paragraphs = file_doc['paragraphs']
     chunks = file_doc['chunks']
     print(f"读文: title={title}")
@@ -274,7 +277,7 @@ def prompt():
         session['messages'] = messages
         session['contexts'] = contexts
         # 保存prompt到数据库中
-        db.update_user(name=session['name'], uid=session['uid'], \
+        mongo.update_user(name=session['name'], uid=session['uid'], \
                        prompt=session["prompt"])
         print(f"提示：prompt={prompt}, messages={messages}, contexts={contexts}")
         return redirect(url_for('index'))
@@ -285,35 +288,90 @@ def prompt():
         session.pop('messages', None)
         session.pop('contexts', None)
         # 清除数据库中的prompt
-        db.update_user(name=session['name'], uid=session['uid'], prompt="")
+        mongo.update_user(name=session['name'], uid=session['uid'], prompt="")
         return redirect(url_for('index'))
     return redirect(url_for('index'))
+
+def search_context(query, query_embedding):
+    # 搜索网页
+    webpages = google.search(query=query)
+    if not webpages:
+        return None
+    # webpages != None
+    # 遍历网页
+    for webpage in webpages:
+        # 抓取网页
+        url = webpage['link']
+        okey, data = crawl_webpage(url=url)
+        if not okey:
+            continue
+        title, paragraphs = data
+        if len(paragraphs) == 0:
+            continue
+        title = webpage['title'] # 优先使用Google的title而非自动提取的title
+        # 嵌入网页
+        chunks, embeddings = openai.embed_document(paragraphs)
+        # 新增嵌入
+        chroma.insert(chunks=chunks, embeddings=embeddings, \
+                      title=title, link=url)
+    # 查询嵌入
+    results = chroma.query(query_embedding=query_embedding, n_results=1)
+    # 删除嵌入
+    chroma.clear()
+    if not results or len(results) == 0:
+        return None
+    # len(results) > 0
+    context = results['documents'][0][0]
+    context_embedding = results['embeddings'][0][0]
+    #title = results['metadatas'][0][0]['title']
+    #link = results['metadatas'][0][0]['link']
+    #distance = results['distances'][0][0]
+    score = np.array(query_embedding).dot(np.array(context_embedding))
+    return (score, context)
         
 @app.route('/chat', methods=['POST'])
 def chat():
     submit = request.form.get('submit')
     if submit == '发送':
-        # 问答服务
         question = request.form.get('question')
         if 'messages' not in session or 'contexts' not in session:
             return redirect(url_for('index'))
         messages = session['messages']
         contexts = session['contexts']
-        # 在私人文档中检索与question最相关的context
-        question_embedding = model.embed_query(query=question)
-        scores, ids = pc.query(query_embedding=question_embedding)
-        score = scores[0]
-        file_id, chunk_id = ids[0]
+        # 在个人文档中检索与question最相关的context
+        question_embedding = openai.embed_query(query=question)
+        result = pinecone.query(query_embedding=question_embedding, \
+                                     namespace=session['name'], top_k=1)
+        if not result:
+            context = ""
+        else:
+            scores, ids = result
+            score = scores[0]
+            file_id, chunk_id = ids[0]
+            file_doc = mongo.find_file(name=session['name'], file_id=file_id)
+            if not file_doc:
+                context = ""
+            else:
+                context = file_doc['chunks'][chunk_id]
         # 在搜索引擎中搜索与question最相关的context
         if score < 0.8:
-            pass
-        file_doc = db.find_file(name=session['name'], file_id=file_id)
-        context = file_doc['chunks'][chunk_id]
-        contexted_question = "根据以下内容回答问题：\n内容：" \
+            print("use Google search")
+            result = search_context(question, question_embedding)
+            if not result:
+                context = ""
+            else:
+                score, context = result
+        # 问答服务
+        if context != "":
+            contexted_question = "根据以下内容回答问题：\n内容：" \
                                 + context + "\n问题：" + question
-        messages.append({"role":"user", "content":contexted_question})
-        okey, result = model.qa(messages)
-        messages.pop(-1)
+            messages.append({"role":"user", "content":contexted_question})
+            okey, result = openai.answer_question(messages)
+            messages.pop(-1)
+            messages.append({"role":"user", "content":question})
+        else:
+            messages.append({"role":"user", "content":question})
+            okey, result = openai.answer_question(messages)
         # 回答失败
         if not okey:
             err_msg = result
@@ -321,12 +379,12 @@ def chat():
                                    state='chat', chat_msg=err_msg)
         # 回答成功
         answer = result
-        messages.append({"role":"user", "content":question})
         messages.append({"role":"assistant", "content":answer})
         session['messages']=messages
-        contexts.append(context)
+        contexts.append({'context':context, 'score':score})
         session['contexts']=contexts
-        print(f"问答: question={question}, context={context}, answer={answer}")
+        print(f"交谈: question={question}年\n" + \
+              f" context={context}\n answer={answer}")
         return redirect(url_for('index'))
     elif submit == '删除':
         # message_idx为某轮问答的发问对应的messages索引

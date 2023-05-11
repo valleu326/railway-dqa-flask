@@ -235,9 +235,9 @@
                             参考：
                             {% for item in session.get('contexts')[ci] %}
             <a id="ct_{{ci}}_{{loop.index0}}" href="javascript:;" onclick=
-"click_chunk({{ci}},{{loop.index0}},{{session.get('contexts')[ci]|length}})">
-            节选{{loop.index}}</a>
-            [<a href="{{item['link']}}" target="_blank">链接</a>]&nbsp;&nbsp;
+"click_chunk({{ci}},{{loop.index0}},{{session.get('contexts')[ci]|length}})"
+            >节选{{loop.index}}</a>[<a href="{{item['link']}}" 
+            target="_blank">链接</a>]&nbsp;&nbsp;
                             {% endfor %}
                         </td>
                     </tr>

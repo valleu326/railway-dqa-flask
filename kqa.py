@@ -395,14 +395,14 @@ class Google(object):
     def search(self, query):
         results = GoogleSearch({
                 'q': query,    
-                'engine': 'baidu', #'google',
+                'engine': 'google',
                 'api_key': self.serp_api_key,
-                #'google_domain': "google.com.hk",
-                #'hl': 'zh-CN',
-                #'gl': 'cn',
-                #'start': 0,
-                #'num': 10,
-                #'output': 'json'
+                'google_domain': "google.com.hk",
+                'hl': 'zh-CN',
+                'gl': 'cn',
+                'start': 0,
+                'num': 10,
+                'output': 'json'
             }).get_dict()
         if results["search_metadata"]['status'] == 'Error':
             return None

@@ -65,16 +65,20 @@ def crawl_webpage(url):
         if result:
             title = result.text
         else:
-            res = soup.find('title')
-            if res:
-                title = res.text
+            result = soup.find('title')
+            if result:
+                title = result.text
             else:
-                return (False, "网页没有标题")
+                title = ""
     title = title.strip()
+    if not title:
+        return (False, "网页没有标题")
     paragraphs = []
     for p in soup.find_all('p'):
         if p.text.strip() != "":
             paragraphs.append(p.text.strip())
+    if not paragraphs:
+        return (False, "网页没有内容")
     return (True, (title, paragraphs))
 
 

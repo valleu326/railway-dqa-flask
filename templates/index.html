@@ -28,23 +28,28 @@
         -moz-box-sizing:border-box;
     }
     a:link, a:visited, a:hover, a:active {
+        color: blue;
         text-decoration: none; 
     }
     </style>
     <script text="text/javascript">
-        function on_click(idx) {
-            var buttons = 
-                document.getElementsByClassName('button');
-            var button = buttons[idx];
-            var contexts = 
-                document.getElementsByClassName('context');
-            var context = contexts[idx];
-            if (context.style.display == "none") {
-                context.style.display = "block";
-                button.innerHTML = "<<<折叠";
-            }else if (context.style.display == "block") {
-                context.style.display = "none";
-                button.innerHTML = ">>>展开";
+        function click_chunk(context_idx, chunk_idx, num_chunks) {
+            var ct_id = 'ct_'+context_idx+'_'+chunk_idx;
+            var chunk_title = document.getElementById(ct_id);
+            var cc_id = 'cc_'+context_idx+'_'+chunk_idx;
+            var chunk_content = document.getElementById(cc_id);
+            if (chunk_content.style.display == "block") {
+                chunk_title.style.fontWeight = "normal";
+                chunk_content.style.display = "none";
+            } else { // chunk_content.style.display == "none"
+                for (i = 0; i < num_chunks; i++) {
+                    var ct = document.getElementById('ct_'+context_idx+'_'+i);
+                    ct.style.fontWeight = "normal";
+                    var cc = document.getElementById('cc_'+context_idx+'_'+i);
+                    cc.style.display = "none";
+                }
+                chunk_title.style.fontWeight = "bold";
+                chunk_content.style.display = "block";
             }
             return false;
         }
@@ -139,12 +144,12 @@
                             text="file" height="16" width="16">
             {% if title|length <= 20 %}
             <label class="short_text">
-                <a href="{{url_for('read', title_idx=loop.index0)}}" 
+                <a href="{{url_for('read', tid=loop.index0)}}" 
                 target="_blank">{{title}}</a>
             </label><br>
             {% else %}
             <label class="short_text">
-                <a href="{{url_for('read', title_idx=loop.index0)}}" 
+                <a href="{{url_for('read', tid=loop.index0)}}" 
                 target="_blank">{{title[:20]}}...</a>
             </label><br>
             {% endif %}
@@ -164,7 +169,7 @@
             <table border="0" width="360">
                 <tr>
                     <td>
-                        <label>提示：</label>
+                        <label>系统：</label>
                     </td>
                 </tr>
                 <tr>
@@ -179,7 +184,7 @@
             {% endif %} 
         {% elif state == 'chat' %}  {# 问答阶段 #}
             <table border="0" width="360">
-                <tr><td>提示：</td></tr>
+                <tr><td>系统：</td></tr>
                 <tr><td class="textbox">
                         {{session.get('prompt')}}
                 </td></tr>
@@ -193,7 +198,7 @@
     {% if state == 'chat' %}
         {# 问答历史 #}
         {% for message in session.get('messages') %}
-            {% if (loop.index0 > 0) and (loop.index0 % 2 == 1) %} {# 发问 #}
+            {% if (loop.index0 > 0) and (loop.index0 % 2 == 1) %} {# 用户发问 #}
             <div align="center">
             <form method="post" action="{{url_for('chat')}}" 
                     class="blockbox" style="width:400px;"><br/>
@@ -202,7 +207,7 @@
                 <table border="0" width="360">
                     <tr>
                         <td>
-                            发问{{"%d"|format((loop.index0+1)/2)}}：
+                            用户：
                         </td>
                     </tr>
                     <tr>
@@ -210,26 +215,12 @@
                             {{message['content']|replace('\n','<br/>')|safe}}
                         </td>
                     </tr>
-                    <tr>
-                        <td>
-                            节选{{"%d"|format((loop.index0+1)/2)}}：
-                            {# ci为context indxe #}
-                            {% set ci = ((loop.index0-1)/2)|int %}
-    得分 = {{"%0.2f"|format(session.get('contexts')[ci]['score'])}}&nbsp;&nbsp;
-                            <a href="javascript:;" onclick="on_click({{ci}})"
-                                                 class="button">>>>展开</a>
-                        </td>
-                    </tr>
-                    <tr class="context" style="display:none">
-                        <td class="textbox">
-                            {{session.get('contexts')[ci]['context']|safe}}
-                        </td>
-                    </tr>
+                    
             {% endif %}
-            {% if (loop.index0 > 0) and (loop.index0 % 2 == 0) %} {# 回答 #}
+            {% if (loop.index0 > 0) and (loop.index0 % 2 == 0) %} {# 助理回答 #}
                     <tr>
                         <td>
-                            回答{{"%d"|format(loop.index0/2)}}：
+                            助理：
                         </td>
                     </tr>
                     <tr>
@@ -237,13 +228,33 @@
                             {{message['content']|replace('\n','<br/>')|safe}}
                         </td>
                     </tr>
+                    <tr>
+                        <td>
+                            参考：
+                            {# ci为context index #}
+                            {% set ci = ((loop.index0-2)/2)|int %}
+                            {% for item in session.get('contexts')[ci] %}
+            <a id="ct_{{ci}}_{{loop.index0}}" href="javascript:;" onclick=
+"click_chunk({{ci}},{{loop.index0}},{{session.get('contexts')[ci]|length}})">
+            节选{{loop.index}}</a>
+            [<a href="{{item['link']}}" target="_blank">链接</a>]&nbsp;&nbsp;
+                            {% endfor %}
+                        </td>
+                    </tr>
+                    {% for item in session.get('contexts')[ci] %}
+                    <tr id="cc_{{ci}}_{{loop.index0}}" style="display:none">
+                        <td class="textbox">
+                            {{item['chunk']|e}}
+                        </td>
+                    </tr>
+                    {% endfor %}
                 </table>
                 <input type="submit" name="submit" value="删除" /><br/><br/>
             </form>
             </div><br/>
             {% endif %} 
         {% endfor %}
-        {# 再次发问 #}
+        {# 用户再次发问 #}
         {% if session.get('messages')|length < 7 %} {# 最多3轮问答 #}
             <div align="center">
             <form method="post" action="{{url_for('chat')}}" 
@@ -251,7 +262,24 @@
                 <table border="0" width="360">
                     <tr>
                         <td>
-                            <label>发问：</label>
+                            <label>用户：</label>
+                            <select name="chattype">
+                                <option value="direct" 
+                                    {% if session.get('chattype') == 'direct' %}
+                                    selected="selected"
+                                    {% endif %}
+                                                    >直接问答</option>
+                                <option value="document"
+                                    {% if session.get('chattype') == 'document' %}
+                                    selected="selected"
+                                    {% endif %}
+                                                    >文档问答</option>
+                                <option value="search"
+                                    {% if session.get('chattype') == 'search' %}
+                                    selected="selected"
+                                    {% endif %}
+                                                    >搜索问答</option>
+                            </select>
                         </td>
                     </tr>
                     <tr>

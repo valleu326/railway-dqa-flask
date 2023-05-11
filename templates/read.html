@@ -30,16 +30,16 @@
         <td valign="top" class="blockbox" width="400" 
                 style="border-right: 1px solid #000000;">
         {% for paragraph in paragraphs %}
-            <p>
-            [{{loop.index0}}]{{paragraph}}
-            </p>
+            <p>[{{loop.index0}}]{{paragraph}}</p>
         {% endfor %}
         </td>
         <td valign="top" class="blockbox" width="400">
         {% for chunk in chunks %}
-            <p>
-            [{{loop.index0}}]{{chunk}}
-            </p>
+            {% if chunk_id != None and loop.index0 == chunk_id %}
+            <p style="color:red;">[{{loop.index0}}]{{chunk}}</p>
+            {% else %}
+            <p>[{{loop.index0}}]{{chunk}}</p>
+            {% endif %}
         {% endfor %}
         </td>
     </tr>

@@ -372,8 +372,8 @@ class Pinecone(object):
             return None
         embed_ids = [match.id for match in result.matches]
         scores = [match.score for match in result.matches]
-        ids = [self.eid2fid(embed_ids[i]) \
-                                     for i in range(len(embed_ids)) ]
+        n = len(result.matches)
+        ids = [self.eid2fid(embed_ids[i]) for i in range(n)]
         return (scores, ids)
         
     def delete(self, file_id="", num_embeddings=0, namespace=''):

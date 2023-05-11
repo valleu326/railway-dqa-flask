@@ -53,7 +53,7 @@ def crawl_webpage(url):
         # response.text.encode(response.encoding).decode(charset), \
         # 'html.parser', from_encoding=charset)
         soup = BeautifulSoup(response.content.decode(charset), \
-                             'html.parser', from_encoding=charset)
+                              'html.parser', from_encoding=charset)
     except UnicodeDecodeError as err:
         print(f"requests错误: error={err}")
         return (False, "网页解码错误")

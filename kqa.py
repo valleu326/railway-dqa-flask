@@ -395,14 +395,14 @@ class Google(object):
     def search(self, query):
         results = GoogleSearch({
                 'q': query,    
-                'engine': 'google',
+                'engine': 'baidu', #'google',
                 'api_key': self.serp_api_key,
-                'google_domain': "google.com.hk",
-                'hl': 'zh-CN',
-                'gl': 'cn',
-                'start': 0,
-                'num': 10,
-                'output': 'json'
+                #'google_domain': "google.com.hk",
+                #'hl': 'zh-CN',
+                #'gl': 'cn',
+                #'start': 0,
+                #'num': 10,
+                #'output': 'json'
             }).get_dict()
         if results["search_metadata"]['status'] == 'Error':
             return None
@@ -438,6 +438,7 @@ class Chroma(object):
     def query(self, query_embedding, n_results=1):
         try:
             results = self.collection.query([query_embedding], \
+                                            n_results=n_results, \
                 include=['documents', 'embeddings', 'metadatas', 'distances'])
         except chromadb.errors.NotEnoughElementsException as err:
             print(err)

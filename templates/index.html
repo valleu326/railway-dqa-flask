@@ -228,11 +228,11 @@
                             {{message['content']|replace('\n','<br/>')|safe}}
                         </td>
                     </tr>
+                    {% set ci = ((loop.index0-2)/2)|int %}{# context index #}
+                    {% if session.get('contexts')[ci]|length > 0 %}
                     <tr>
                         <td>
                             参考：
-                            {# ci为context index #}
-                            {% set ci = ((loop.index0-2)/2)|int %}
                             {% for item in session.get('contexts')[ci] %}
             <a id="ct_{{ci}}_{{loop.index0}}" href="javascript:;" onclick=
 "click_chunk({{ci}},{{loop.index0}},{{session.get('contexts')[ci]|length}})">
@@ -248,6 +248,7 @@
                         </td>
                     </tr>
                     {% endfor %}
+                    {% endif %}
                 </table>
                 <input type="submit" name="submit" value="删除" /><br/><br/>
             </form>

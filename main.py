@@ -6,6 +6,7 @@ from flask import Flask, request, redirect, url_for, render_template, session
 import kqa
 from unstructured.partition.doc import partition_doc
 from unstructured.partition.docx import partition_docx
+import fitz
 from fproc import crawl_webpage
 
 # 获取全局变量
@@ -161,21 +162,27 @@ def fetch():
     if submit == '上传文件':
         if 'file' not in request.files:
             return redirect(url_for('index'))
-        # 从文件中提取title和paragraphs
         file = request.files['file']
+        # 从文件中提取title和paragraphs
         filename, filetype = os.path.splitext(file.filename)
         title = filename.strip()
         if not title:
             return render_template('index.html', \
                         state=get_current_state(), file_msg="文件没有标题")
         filetype = filetype.lower()
-        if filetype not in ['.txt', '.doc', '.docx']:
+        if filetype not in ['.txt', '.pdf', '.doc', '.docx']:
             return redirect(url_for('index'))    # 永不进入：前端做了限制。
         filepath = "./tmp" # 保存到临时文件中
         file.save(filepath)
         if filetype == '.txt':
-            with open(filepath, "r") as f:
-                paragraphs = f.readlines()
+            with open(filepath, "r") as fp:
+                paragraphs = fp.readlines()
+        elif filetype == '.pdf':
+            paragraphs = []
+            with fitz.open(filepath) as doc:
+                for page in doc:
+                    text = page.get_text()
+                    paragraphs.extend(text.split('\n'))
         elif filetype == '.doc':
             paragraphs = partition_doc(filename=filepath)
         elif filetype == '.docx':
@@ -184,7 +191,7 @@ def fetch():
                                       if str(p).strip() != ""]
         if not paragraphs:    
             return render_template('index.html', \
-                        state=get_current_state(), file_msg="文件没有标题")
+                        state=get_current_state(), file_msg="文件没有内容")
     elif submit == '抓取网页':        
         # 抓取网页：获取title和paragraphs
         url = request.form.get('url')

@@ -6,20 +6,36 @@
                                                     type="image/x-icon">
     <title>知识问答AI</title>
     <style>
-    .blockbox {
-        background:#f3f3f3;
-    }
     textarea {
-        background:#d0e8ff;
+        background:#FFFFDD;
         height:100px;
-        width:360px; 
+        width:340px; 
         resize:none;
     }
-    .textbox {
+    a:link, a:visited, a:hover, a:active {
+        color:#333399;
+        text-decoration:none; 
+    }
+    .blockbox {
+        background:#f5f5f5;
+    }
+    .userbox {
         padding:4px;
         border-style:solid;
         border-width:1px;
-        background:#d0e8ff
+        background:#FFFFEE;
+    }
+    .robotbox {
+        padding:4px;
+        border-style:solid;
+        border-width:1px;
+        background:#DDEEFF;
+    }
+    .contextbox {
+        padding:4px;
+        border-style:solid;
+        border-width:1px;
+        background:#DDEEDD;
     }
     .short_text {
         width:95%;
@@ -27,9 +43,10 @@
         -webkit-box-sizing:border-box;
         -moz-box-sizing:border-box;
     }
-    a:link, a:visited, a:hover, a:active {
-        color: blue;
-        text-decoration: none; 
+    .low_br{
+        display:block;
+        content:"";
+        margin-top:13px; 
     }
     </style>
     <script text="text/javascript">
@@ -111,14 +128,14 @@
     <div align="center">
     <table border="0" width="600">
     <tr >
-    <td valign="top" class="blockbox" width="200">
+    <td valign="top" class="blockbox" width="180">
     {# 文档部分 #}
     {# 提交文件 #}
     <div align="center" >
     <form action="{{url_for('fetch')}}" method="post" enctype=
         "multipart/form-data" style="width:180px;" ><br/>
         <input type="file" name="file" class="short_text" 
-                                    accept=".txt,.doc,.docx"/>
+                                    accept=".txt,.pdf,.doc,.docx"/>
         <input type="submit" name="submit" value="上传文件" /><br/>
     </form>
     <br/>
@@ -133,7 +150,7 @@
     {% if file_msg %} 
         <span style="color:red;">{{file_msg}}</span><br/>
     {% endif %}
-    <hr width="180" />
+    <hr width="170" />
     </div>
     {# 标题列表 #}
     {% for title in session.get('titles') %}
@@ -160,11 +177,11 @@
         </div><br/>
     {% endfor %}
     </td>
-    <td valign="top" width="400"> 
+    <td valign="top" width="380"> 
     {# 提示部分 #}
     <div align="center">
     <form action="{{url_for('prompt')}}" method="post"  
-                            class="blockbox" style="width:400px;" ><br/>
+                            class="blockbox" style="width:380px;" ><br/>
         {% if state == 'prompt' %} {# 提示阶段 #}
             <table border="0" width="360">
                 <tr>
@@ -185,7 +202,7 @@
         {% elif state == 'chat' %}  {# 问答阶段 #}
             <table border="0" width="360">
                 <tr><td>系统：</td></tr>
-                <tr><td class="textbox">
+                <tr><td class="userbox">
                         {{session.get('prompt')}}
                 </td></tr>
             </table>
@@ -193,7 +210,7 @@
         {% else %}        
         {% endif %}
     </form>
-    </div><br />
+    </div><br class="low_br" />
     {# 问答部分  #}
     {% if state == 'chat' %}
         {# 问答历史 #}
@@ -201,7 +218,7 @@
             {% if (loop.index0 > 0) and (loop.index0 % 2 == 1) %} {# 用户发问 #}
             <div align="center">
             <form method="post" action="{{url_for('chat')}}" 
-                    class="blockbox" style="width:400px;"><br/>
+                    class="blockbox" style="width:380px;"><br/>
                 <input type="hidden" name="message_idx" 
                                 value="{{loop.index0}}" />
                 <table border="0" width="360">
@@ -211,7 +228,7 @@
                         </td>
                     </tr>
                     <tr>
-                        <td class="textbox">
+                        <td class="userbox">
                             {{message['content']|replace('\n','<br/>')|safe}}
                         </td>
                     </tr>
@@ -224,7 +241,7 @@
                         </td>
                     </tr>
                     <tr>
-                        <td class="textbox" >
+                        <td class="robotbox" >
                             {{message['content']|replace('\n','<br/>')|safe}}
                         </td>
                     </tr>
@@ -243,7 +260,7 @@
                     </tr>
                     {% for item in session.get('contexts')[ci] %}
                     <tr id="cc_{{ci}}_{{loop.index0}}" style="display:none">
-                        <td class="textbox">
+                        <td class="contextbox">
                             {{item['chunk']|e}}
                         </td>
                     </tr>
@@ -252,14 +269,14 @@
                 </table>
                 <input type="submit" name="submit" value="删除" /><br/><br/>
             </form>
-            </div><br/>
+            </div><br class="low_br" />
             {% endif %} 
         {% endfor %}
         {# 用户再次发问 #}
         {% if session.get('messages')|length < 7 %} {# 最多3轮问答 #}
             <div align="center">
             <form method="post" action="{{url_for('chat')}}" 
-                    class="blockbox" style="width:400px;"><br/>
+                    class="blockbox" style="width:380px;"><br/>
                 <table border="0" width="360">
                     <tr>
                         <td>
